@@ -9,11 +9,11 @@
     <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel -->
+    <!-- Babel para compilar JSX no navegador -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Firebase App & Firestore 9.x Compat -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+    <!-- Firebase SDKs (Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Poppins', sans-serif; }
@@ -42,16 +42,12 @@
 
         function App() {
             const [user, setUser] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('toca_karaoke_user');
-                    if (saved) {
-                        const data = JSON.parse(saved);
-                        if (new Date().getTime() - data.timestamp < 2 * 60 * 60 * 1000) {
-                            return data.name;
-                        }
+                const saved = localStorage.getItem('toca_karaoke_user');
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    if (new Date().getTime() - data.timestamp < 2 * 60 * 60 * 1000) {
+                        return data.name;
                     }
-                } catch (e) {
-                    console.error(e);
                 }
                 return '';
             });
@@ -63,6 +59,7 @@
             const [queue, setQueue] = useState([]);
             const [history, setHistory] = useState([]);
             const [ratings, setRatings] = useState({});
+            const [isPaused, setIsPaused] = useState(false);
 
             const [isAdmin, setIsAdmin] = useState(false);
             const [adminModal, setAdminModal] = useState(false);
@@ -71,34 +68,34 @@
 
             // Sincronização em tempo real com o Firestore
             useEffect(() => {
-                let unsubQueue = () => {};
-                let unsubHistory = () => {};
-                let unsubRatings = () => {};
+                const unsubQueue = db.collection('queue').orderBy('createdAt', 'asc').onSnapshot(snapshot => {
+                    const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setQueue(items);
+                });
 
-                try {
-                    unsubQueue = db.collection('queue').orderBy('createdAt', 'asc').onSnapshot(snapshot => {
-                        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setQueue(items);
-                    }, err => console.log("Erro fila:", err));
+                const unsubHistory = db.collection('history').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+                    const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setHistory(items);
+                });
 
-                    unsubHistory = db.collection('history').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
-                        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setHistory(items);
-                    }, err => console.log("Erro histórico:", err));
+                const unsubRatings = db.collection('ratings').doc('data').onSnapshot(doc => {
+                    if (doc.exists) {
+                        setRatings(doc.data() || {});
+                    }
+                });
 
-                    unsubRatings = db.collection('ratings').doc('data').onSnapshot(doc => {
-                        if (doc.exists) {
-                            setRatings(doc.data() || {});
-                        }
-                    }, err => console.log("Erro ratings:", err));
-                } catch (e) {
-                    console.error("Erro ao conectar firebase:", e);
-                }
+                // Sincronizar estado de Pausa dos pedidos
+                const unsubSettings = db.collection('settings').doc('status').onSnapshot(doc => {
+                    if (doc.exists) {
+                        setIsPaused(doc.data().paused || false);
+                    }
+                });
 
                 return () => {
                     unsubQueue();
                     unsubHistory();
                     unsubRatings();
+                    unsubSettings();
                 };
             }, []);
 
@@ -117,6 +114,10 @@
 
             const handleAddSong = async (e) => {
                 e.preventDefault();
+                if (isPaused) {
+                    alert('Os pedidos de músicas estão pausados no momento!');
+                    return;
+                }
                 if (!songTitle.trim() || !songArtist.trim()) return;
 
                 if (userActiveSongsCount >= 2) {
@@ -134,8 +135,7 @@
                     setSongTitle('');
                     setSongArtist('');
                 } catch (error) {
-                    console.error("Erro ao adicionar:", error);
-                    alert("Erro ao enviar a música. Verifique sua conexão.");
+                    console.error("Erro ao adicionar música: ", error);
                 }
             };
 
@@ -165,7 +165,7 @@
                     });
                     await db.collection('queue').doc(current.id).delete();
                 } catch (error) {
-                    console.error("Erro próximo:", error);
+                    console.error("Erro ao avançar música: ", error);
                 }
             };
 
@@ -187,7 +187,7 @@
             };
 
             const handleResetNotes = async () => {
-                if (confirm('Deseja realmente zerar o histórico e as notas?')) {
+                if (confirm('Deseja realmente zerar o histórico e as notas das músicas tocadas?')) {
                     const batch = db.batch();
                     history.forEach(item => {
                         batch.delete(db.collection('history').doc(item.id));
@@ -197,10 +197,17 @@
                 }
             };
 
+            // Alternar Pausa/Retomada de Pedidos
+            const handleTogglePause = async () => {
+                const newStatus = !isPaused;
+                await db.collection('settings').doc('status').set({ paused: newStatus });
+            };
+
             const handleRate = async (historyId, stars) => {
                 const currentSongRatings = ratings[historyId] || {};
                 const updatedSongRatings = { ...currentSongRatings, [user]: stars };
                 const newRatings = { ...ratings, [historyId]: updatedSongRatings };
+                
                 await db.collection('ratings').doc('data').set(newRatings);
             };
 
@@ -216,7 +223,7 @@
                     <div className="flex flex-col items-center justify-center min-h-screen px-4 bg-gradient-to-b from-zinc-900 to-zinc-950 py-8">
                         <div className="w-full max-w-md bg-zinc-900 border border-amber-500/30 rounded-2xl overflow-hidden shadow-2xl shadow-amber-500/10">
                             <div className="w-full h-48 sm:h-56 overflow-hidden border-b border-amber-500/30">
-                                <img src="banner.jpg" alt="Toca do Guerreiro" className="w-full h-full object-cover object-center" />
+                                <img src="banner.jpg" alt="Toca do Guerreiro Karaokê" className="w-full h-full object-cover object-center" />
                             </div>
                             <div className="p-8">
                                 <div className="text-center mb-6">
@@ -251,10 +258,12 @@
 
             return (
                 <div className="max-w-4xl mx-auto px-4 py-8">
+                    {/* Banner Oficial no Topo */}
                     <div className="w-full h-48 sm:h-72 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl mb-8">
-                        <img src="banner.jpg" alt="Toca do Guerreiro" className="w-full h-full object-cover object-center" />
+                        <img src="banner.jpg" alt="Toca do Guerreiro Karaokê" className="w-full h-full object-cover object-center" />
                     </div>
 
+                    {/* Header com dados do usuário */}
                     <header className="flex justify-between items-center bg-zinc-900/80 backdrop-blur border border-zinc-800 p-4 rounded-2xl mb-8">
                         <div>
                             <span className="text-xs text-amber-400 font-semibold uppercase tracking-wider">Cantor(a) conectado(a)</span>
@@ -282,6 +291,7 @@
                         </div>
                     </header>
 
+                    {/* Painel de Controle do Admin */}
                     {isAdmin && (
                         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 mb-8">
                             <h3 className="text-amber-400 font-bold text-lg mb-4 flex items-center gap-2">
@@ -295,6 +305,12 @@
                                     ⏭️ Próxima Música
                                 </button>
                                 <button 
+                                    onClick={handleTogglePause}
+                                    className={`${isPaused ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950' : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40'} font-bold px-5 py-3 rounded-xl transition-all`}
+                                >
+                                    {isPaused ? '▶️ Retomar Pedidos' : '⏸️ Pausar Pedidos'}
+                                </button>
+                                <button 
                                     onClick={handleResetNotes}
                                     className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold px-5 py-3 rounded-xl transition-all"
                                 >
@@ -305,45 +321,59 @@
                     )}
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        {/* Formulário para Pedir Música ou Caixa de Pausa */}
                         <div className="md:col-span-1">
-                            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sticky top-6">
-                                <h3 className="text-lg font-bold text-zinc-100 mb-4">Pedir Música</h3>
-                                <form onSubmit={handleAddSong} className="space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Música</label>
-                                        <input 
-                                            type="text" 
-                                            required
-                                            value={songTitle}
-                                            onChange={(e) => setSongTitle(e.target.value)}
-                                            placeholder="Ex: Evidências"
-                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
-                                        />
+                            {isPaused ? (
+                                <div className="bg-zinc-900 border border-amber-500/40 rounded-2xl p-6 text-center shadow-2xl shadow-amber-500/10 sticky top-6">
+                                    <div className="w-full h-48 rounded-xl overflow-hidden mb-4 border border-amber-500/30">
+                                        <img src="mensagem.jpg" alt="Karaoke Off" className="w-full h-full object-cover object-center" />
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Artista / Banda</label>
-                                        <input 
-                                            type="text" 
-                                            required
-                                            value={songArtist}
-                                            onChange={(e) => setSongArtist(e.target.value)}
-                                            placeholder="Ex: Chitãozinho & Xororó"
-                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
-                                        />
-                                    </div>
-                                    <button 
-                                        type="submit"
-                                        className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 text-sm"
-                                    >
-                                        Pedir Música 🎤
-                                    </button>
-                                </form>
-                                <div className="mt-4 bg-zinc-950/50 p-3 rounded-xl border border-zinc-800/60 text-xs text-zinc-400">
-                                    <p>💡 <span className="text-zinc-300 font-medium">Regra:</span> Você pode ter até 2 músicas ativas na fila.</p>
+                                    <h3 className="text-xl font-extrabold text-amber-500 mb-2">Que pena que acabou!</h3>
+                                    <p className="text-xs text-zinc-400 leading-relaxed">
+                                        Os pedidos de músicas foram pausados pelo administrador. Obrigado a todos pela participação na Toca do Guerreiro!
+                                    </p>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sticky top-6">
+                                    <h3 className="text-lg font-bold text-zinc-100 mb-4">Pedir Música</h3>
+                                    <form onSubmit={handleAddSong} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-medium text-zinc-400 mb-1">Música</label>
+                                            <input 
+                                                type="text" 
+                                                required
+                                                value={songTitle}
+                                                onChange={(e) => setSongTitle(e.target.value)}
+                                                placeholder="Ex: Evidências"
+                                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-zinc-400 mb-1">Artista / Banda</label>
+                                            <input 
+                                                type="text" 
+                                                required
+                                                value={songArtist}
+                                                onChange={(e) => setSongArtist(e.target.value)}
+                                                placeholder="Ex: Chitãozinho & Xororó"
+                                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
+                                            />
+                                        </div>
+                                        <button 
+                                            type="submit"
+                                            className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 text-sm"
+                                        >
+                                            Pedir Música 🎤
+                                        </button>
+                                    </form>
+                                    <div className="mt-4 bg-zinc-950/50 p-3 rounded-xl border border-zinc-800/60 text-xs text-zinc-400">
+                                        <p>💡 <span className="text-zinc-300 font-medium">Regra:</span> Você pode ter até 2 músicas ativas na fila simultaneamente.</p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
+                        {/* Fila de Espera */}
                         <div className="md:col-span-2 space-y-8">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
                                 <div className="flex justify-between items-center mb-4">
@@ -391,6 +421,7 @@
                                 )}
                             </div>
 
+                            {/* Ranking / Músicas Tocadas e Avaliadas */}
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
                                 <h3 className="text-lg font-bold text-zinc-100 mb-1">Ranking de Performances</h3>
                                 <p className="text-xs text-zinc-400 mb-4">Avalie de 1 a 5 estrelas as apresentações que já aconteceram!</p>
@@ -403,6 +434,8 @@
                                     <div className="space-y-3">
                                         {rankedHistory.map((item, index) => {
                                             const userRating = (ratings[item.id] || {})[user] || 0;
+                                            const isOwner = item.user.toLowerCase() === user.toLowerCase();
+
                                             return (
                                                 <div key={item.id} className="bg-zinc-950 border border-zinc-800/80 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                                     <div>
@@ -418,17 +451,26 @@
                                                         <p className="text-xs text-zinc-400">Cantado por: <span className="text-amber-400 font-medium">{item.user}</span></p>
                                                     </div>
 
-                                                    <div className="flex items-center gap-1 bg-zinc-900 px-3 py-2 rounded-xl border border-zinc-800 self-start sm:self-auto">
-                                                        <span className="text-[10px] text-zinc-400 mr-1 font-medium">Sua nota:</span>
-                                                        {[1, 2, 3, 4, 5].map((star) => (
-                                                            <button
-                                                                key={star}
-                                                                onClick={() => handleRate(item.id, star)}
-                                                                className={`text-base transition-transform hover:scale-125 ${star <= userRating ? 'text-amber-400' : 'text-zinc-700'}`}
-                                                            >
-                                                                ★
-                                                            </button>
-                                                        ))}
+                                                    {/* Sistema de Votação por Estrelas (bloqueado para o próprio dono) */}
+                                                    <div>
+                                                        {isOwner ? (
+                                                            <span className="bg-zinc-900 text-zinc-500 text-[11px] font-medium px-3 py-2 rounded-xl border border-zinc-800 block text-center">
+                                                                Você não pode votar na sua música
+                                                            </span>
+                                                        ) : (
+                                                            <div className="flex items-center gap-1 bg-zinc-900 px-3 py-2 rounded-xl border border-zinc-800 self-start sm:self-auto">
+                                                                <span className="text-[10px] text-zinc-400 mr-1 font-medium">Sua nota:</span>
+                                                                {[1, 2, 3, 4, 5].map((star) => (
+                                                                    <button
+                                                                        key={star}
+                                                                        onClick={() => handleRate(item.id, star)}
+                                                                        className={`text-base transition-transform hover:scale-125 ${star <= userRating ? 'text-amber-400' : 'text-zinc-700'}`}
+                                                                    >
+                                                                        ★
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             );
@@ -439,6 +481,7 @@
                         </div>
                     </div>
 
+                    {/* Modal de Senha do Admin */}
                     {adminModal && (
                         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
@@ -473,6 +516,7 @@
                         </div>
                     )}
 
+                    {/* Modal de Edição de Música (Admin) */}
                     {editingSong && (
                         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
