@@ -498,7 +498,7 @@
                         </div>
                     </div>
 
-                    {/* Pop-up (Modal) otimizado para Vídeo em Pé (Vertical 9:16) */}
+                    {/* Pop-up (Modal) com Vídeo Vertical Com Som Ativado */}
                     {showPausedModal && (
                         <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
                             <div className="bg-zinc-900 border border-amber-500/50 rounded-2xl p-6 w-full max-w-xs sm:max-w-sm shadow-2xl shadow-amber-500/10 text-center">
@@ -507,7 +507,7 @@
                                         src="mensagem.mp4" 
                                         autoPlay 
                                         loop 
-                                        muted 
+                                        controls
                                         playsInline
                                         className="w-full h-full object-cover"
                                     >
