@@ -61,7 +61,6 @@
             const [ratings, setRatings] = useState({});
             const [isPaused, setIsPaused] = useState(false);
             
-            // Estado para abrir o Pop-up de Vídeo quando tentar pedir música com o karaokê pausado
             const [showPausedModal, setShowPausedModal] = useState(false);
 
             const [isAdmin, setIsAdmin] = useState(false);
@@ -133,7 +132,6 @@
             const handleAddSong = async (e) => {
                 e.preventDefault();
                 
-                // Se o admin pausou, ao clicar em Pedir Música abre o pop-up com o vídeo
                 if (isPaused) {
                     setShowPausedModal(true);
                     return;
@@ -500,12 +498,11 @@
                         </div>
                     </div>
 
-                    {/* Pop-up (Modal) de Vídeo quando tentar pedir música com os pedidos pausados */}
+                    {/* Pop-up (Modal) otimizado para Vídeo em Pé (Vertical 9:16) */}
                     {showPausedModal && (
                         <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
-                            <div className="bg-zinc-900 border border-amber-500/50 rounded-2xl p-6 w-full max-w-md shadow-2xl shadow-amber-500/10 text-center">
-                                <div className="w-full h-56 sm:h-64 rounded-xl overflow-hidden mb-4 border border-amber-500/30 bg-black flex items-center justify-center">
-                                    {/* Vídeo do aviso. Coloque um arquivo mensagem.mp4 na pasta do GitHub */}
+                            <div className="bg-zinc-900 border border-amber-500/50 rounded-2xl p-6 w-full max-w-xs sm:max-w-sm shadow-2xl shadow-amber-500/10 text-center">
+                                <div className="w-full aspect-[9/16] max-h-[60vh] rounded-xl overflow-hidden mb-4 border border-amber-500/30 bg-black mx-auto flex items-center justify-center">
                                     <video 
                                         src="mensagem.mp4" 
                                         autoPlay 
@@ -517,14 +514,14 @@
                                         Seu navegador não suporta vídeos.
                                     </video>
                                 </div>
-                                <h3 className="text-2xl font-extrabold text-amber-500 mb-2">Que pena que acabou!</h3>
-                                <p className="text-xs text-zinc-300 leading-relaxed mb-6">
+                                <h3 className="text-xl font-extrabold text-amber-500 mb-1">Que pena que acabou!</h3>
+                                <p className="text-xs text-zinc-300 leading-relaxed mb-5">
                                     Os pedidos de músicas foram pausados pelo administrador. Obrigado a todos pela participação na Toca do Guerreiro!
                                 </p>
                                 <button 
                                     type="button"
                                     onClick={() => setShowPausedModal(false)}
-                                    className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold py-3 rounded-xl transition-colors text-sm shadow-lg shadow-amber-500/20"
+                                    className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold py-2.5 rounded-xl transition-colors text-sm shadow-lg shadow-amber-500/20"
                                 >
                                     Entendido 👍
                                 </button>
