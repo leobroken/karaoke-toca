@@ -60,6 +60,9 @@
             const [history, setHistory] = useState([]);
             const [ratings, setRatings] = useState({});
             const [isPaused, setIsPaused] = useState(false);
+            
+            // Estado para abrir o Pop-up de Vídeo quando tentar pedir música com o karaokê pausado
+            const [showPausedModal, setShowPausedModal] = useState(false);
 
             const [isAdmin, setIsAdmin] = useState(false);
             const [adminModal, setAdminModal] = useState(false);
@@ -98,13 +101,11 @@
                 };
             }, []);
 
-            // Login com validação de nomes duplicados na fila ativa
             const handleLogin = (e) => {
                 e.preventDefault();
                 if (!inputName.trim()) return;
                 const nameFormatted = inputName.trim();
 
-                // Verificar se já existe alguém na fila ativa com esse mesmo nome (ignorando maiúsculas/minúsculas)
                 const nameExistsInQueue = queue.some(item => item.user && item.user.toLowerCase() === nameFormatted.toLowerCase());
 
                 if (nameExistsInQueue) {
@@ -120,7 +121,6 @@
                 setInputName('');
             };
 
-            // Botão Sair / Trocar de Usuário
             const handleLogout = () => {
                 if (confirm('Deseja realmente sair e trocar de nome?')) {
                     localStorage.removeItem('toca_karaoke_user');
@@ -132,10 +132,13 @@
 
             const handleAddSong = async (e) => {
                 e.preventDefault();
+                
+                // Se o admin pausou, ao clicar em Pedir Música abre o pop-up com o vídeo
                 if (isPaused) {
-                    alert('Os pedidos de músicas estão pausados no momento!');
+                    setShowPausedModal(true);
                     return;
                 }
+
                 if (!songTitle.trim() || !songArtist.trim()) return;
 
                 if (userActiveSongsCount >= 2) {
@@ -349,56 +352,44 @@
                     )}
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        {/* Formulário para Pedir Música ou Caixa de Pausa */}
+                        {/* Formulário para Pedir Música */}
                         <div className="md:col-span-1">
-                            {isPaused ? (
-                                <div className="bg-zinc-900 border border-amber-500/40 rounded-2xl p-6 text-center shadow-2xl shadow-amber-500/10 sticky top-6">
-                                    <div className="w-full h-48 rounded-xl overflow-hidden mb-4 border border-amber-500/30">
-                                        <img src="mensagem.jpg" alt="Karaoke Off" className="w-full h-full object-cover object-center" />
+                            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sticky top-6">
+                                <h3 className="text-lg font-bold text-zinc-100 mb-4">Pedir Música</h3>
+                                <form onSubmit={handleAddSong} className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Música</label>
+                                        <input 
+                                            type="text" 
+                                            required
+                                            value={songTitle}
+                                            onChange={(e) => setSongTitle(e.target.value)}
+                                            placeholder="Ex: Evidências"
+                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
+                                        />
                                     </div>
-                                    <h3 className="text-xl font-extrabold text-amber-500 mb-2">Que pena que acabou!</h3>
-                                    <p className="text-xs text-zinc-400 leading-relaxed">
-                                        Os pedidos de músicas foram pausados pelo administrador. Obrigado a todos pela participação na Toca do Guerreiro!
-                                    </p>
-                                </div>
-                            ) : (
-                                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sticky top-6">
-                                    <h3 className="text-lg font-bold text-zinc-100 mb-4">Pedir Música</h3>
-                                    <form onSubmit={handleAddSong} className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-medium text-zinc-400 mb-1">Música</label>
-                                            <input 
-                                                type="text" 
-                                                required
-                                                value={songTitle}
-                                                onChange={(e) => setSongTitle(e.target.value)}
-                                                placeholder="Ex: Evidências"
-                                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-zinc-400 mb-1">Artista / Banda</label>
-                                            <input 
-                                                type="text" 
-                                                required
-                                                value={songArtist}
-                                                onChange={(e) => setSongArtist(e.target.value)}
-                                                placeholder="Ex: Chitãozinho & Xororó"
-                                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
-                                            />
-                                        </div>
-                                        <button 
-                                            type="submit"
-                                            className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 text-sm"
-                                        >
-                                            Pedir Música 🎤
-                                        </button>
-                                    </form>
-                                    <div className="mt-4 bg-zinc-950/50 p-3 rounded-xl border border-zinc-800/60 text-xs text-zinc-400">
-                                        <p>💡 <span className="text-zinc-300 font-medium">Regra:</span> Você pode ter até 2 músicas ativas na fila simultaneamente.</p>
+                                    <div>
+                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Artista / Banda</label>
+                                        <input 
+                                            type="text" 
+                                            required
+                                            value={songArtist}
+                                            onChange={(e) => setSongArtist(e.target.value)}
+                                            placeholder="Ex: Chitãozinho & Xororó"
+                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
+                                        />
                                     </div>
+                                    <button 
+                                        type="submit"
+                                        className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 text-sm"
+                                    >
+                                        Pedir Música 🎤
+                                    </button>
+                                </form>
+                                <div className="mt-4 bg-zinc-950/50 p-3 rounded-xl border border-zinc-800/60 text-xs text-zinc-400">
+                                    <p>💡 <span className="text-zinc-300 font-medium">Regra:</span> Você pode ter até 2 músicas ativas na fila simultaneamente.</p>
                                 </div>
-                            )}
+                            </div>
                         </div>
 
                         {/* Fila de Espera */}
@@ -508,6 +499,38 @@
                             </div>
                         </div>
                     </div>
+
+                    {/* Pop-up (Modal) de Vídeo quando tentar pedir música com os pedidos pausados */}
+                    {showPausedModal && (
+                        <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
+                            <div className="bg-zinc-900 border border-amber-500/50 rounded-2xl p-6 w-full max-w-md shadow-2xl shadow-amber-500/10 text-center">
+                                <div className="w-full h-56 sm:h-64 rounded-xl overflow-hidden mb-4 border border-amber-500/30 bg-black flex items-center justify-center">
+                                    {/* Vídeo do aviso. Coloque um arquivo mensagem.mp4 na pasta do GitHub */}
+                                    <video 
+                                        src="mensagem.mp4" 
+                                        autoPlay 
+                                        loop 
+                                        muted 
+                                        playsInline
+                                        className="w-full h-full object-cover"
+                                    >
+                                        Seu navegador não suporta vídeos.
+                                    </video>
+                                </div>
+                                <h3 className="text-2xl font-extrabold text-amber-500 mb-2">Que pena que acabou!</h3>
+                                <p className="text-xs text-zinc-300 leading-relaxed mb-6">
+                                    Os pedidos de músicas foram pausados pelo administrador. Obrigado a todos pela participação na Toca do Guerreiro!
+                                </p>
+                                <button 
+                                    type="button"
+                                    onClick={() => setShowPausedModal(false)}
+                                    className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold py-3 rounded-xl transition-colors text-sm shadow-lg shadow-amber-500/20"
+                                >
+                                    Entendido 👍
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Modal de Senha do Admin */}
                     {adminModal && (
