@@ -84,7 +84,6 @@
                     }
                 });
 
-                // Sincronizar estado de Pausa dos pedidos
                 const unsubSettings = db.collection('settings').doc('status').onSnapshot(doc => {
                     if (doc.exists) {
                         setIsPaused(doc.data().paused || false);
@@ -99,15 +98,34 @@
                 };
             }, []);
 
+            // Login com validação de nomes duplicados na fila ativa
             const handleLogin = (e) => {
                 e.preventDefault();
                 if (!inputName.trim()) return;
                 const nameFormatted = inputName.trim();
+
+                // Verificar se já existe alguém na fila ativa com esse mesmo nome (ignorando maiúsculas/minúsculas)
+                const nameExistsInQueue = queue.some(item => item.user && item.user.toLowerCase() === nameFormatted.toLowerCase());
+
+                if (nameExistsInQueue) {
+                    alert('Este nome ou apelido já está sendo utilizado na fila no momento! Por favor, escolha outro nome ou adicione um sobrenome.');
+                    return;
+                }
+
                 setUser(nameFormatted);
                 localStorage.setItem('toca_karaoke_user', JSON.stringify({
                     name: nameFormatted,
                     timestamp: new Date().getTime()
                 }));
+                setInputName('');
+            };
+
+            // Botão Sair / Trocar de Usuário
+            const handleLogout = () => {
+                if (confirm('Deseja realmente sair e trocar de nome?')) {
+                    localStorage.removeItem('toca_karaoke_user');
+                    setUser('');
+                }
             };
 
             const userActiveSongsCount = queue.filter(item => item.user && item.user.toLowerCase() === user.toLowerCase()).length;
@@ -197,7 +215,6 @@
                 }
             };
 
-            // Alternar Pausa/Retomada de Pedidos
             const handleTogglePause = async () => {
                 const newStatus = !isPaused;
                 await db.collection('settings').doc('status').set({ paused: newStatus });
@@ -263,11 +280,22 @@
                         <img src="banner.jpg" alt="Toca do Guerreiro Karaokê" className="w-full h-full object-cover object-center" />
                     </div>
 
-                    {/* Header com dados do usuário */}
+                    {/* Header com dados do usuário e botão Sair */}
                     <header className="flex justify-between items-center bg-zinc-900/80 backdrop-blur border border-zinc-800 p-4 rounded-2xl mb-8">
-                        <div>
-                            <span className="text-xs text-amber-400 font-semibold uppercase tracking-wider">Cantor(a) conectado(a)</span>
-                            <h2 className="text-xl font-bold text-zinc-100">{user}</h2>
+                        <div className="flex items-center gap-4">
+                            <div>
+                                <span className="text-xs text-amber-400 font-semibold uppercase tracking-wider">Cantor(a) conectado(a)</span>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                    <h2 className="text-xl font-bold text-zinc-100">{user}</h2>
+                                    <button 
+                                        onClick={handleLogout}
+                                        title="Sair / Trocar de nome"
+                                        className="text-[11px] bg-red-500/15 hover:bg-red-500/25 text-red-400 font-semibold px-2.5 py-1 rounded-lg border border-red-500/30 transition-colors"
+                                    >
+                                        Sair 🚪
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                         <div className="flex items-center gap-3">
                             {!isAdmin ? (
