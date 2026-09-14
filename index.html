@@ -71,17 +71,23 @@
                 const unsubQueue = db.collection('queue').orderBy('createdAt', 'asc').onSnapshot(snapshot => {
                     const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setQueue(items);
+                }, error => {
+                    console.error("Erro ao carregar fila:", error);
                 });
 
                 const unsubHistory = db.collection('history').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
                     const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setHistory(items);
+                }, error => {
+                    console.error("Erro ao carregar histórico:", error);
                 });
 
                 const unsubRatings = db.collection('ratings').doc('data').onSnapshot(doc => {
                     if (doc.exists) {
                         setRatings(doc.data() || {});
                     }
+                }, error => {
+                    console.error("Erro ao carregar avaliações:", error);
                 });
 
                 return () => {
@@ -104,7 +110,7 @@
             };
 
             // Contar quantas músicas ativas o usuário tem na fila
-            const userActiveSongsCount = queue.filter(item => item.user.toLowerCase() === user.toLowerCase()).length;
+            const userActiveSongsCount = queue.filter(item => item.user && item.user.toLowerCase() === user.toLowerCase()).length;
 
             // Pedir música (Adiciona no Firestore)
             const handleAddSong = async (e) => {
@@ -127,6 +133,7 @@
                     setSongArtist('');
                 } catch (error) {
                     console.error("Erro ao adicionar música: ", error);
+                    alert("Erro ao enviar música. Verifique se o banco de dados Cloud Firestore foi criado no Firebase!");
                 }
             };
 
@@ -501,7 +508,7 @@
                                         <label className="block text-xs font-medium text-zinc-400 mb-1">Artista / Banda</label>
                                         <input 
                                             type="text" 
-                                            required
+                               5             required
                                             value={editingSong.artist}
                                             onChange={(e) => setEditingSong({ ...editingSong, artist: e.target.value })}
                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
