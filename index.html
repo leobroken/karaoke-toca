@@ -157,7 +157,6 @@
                             song: { ...nextSong, id: nextSong.id, embedUrl: embedUrl } 
                         });
                     } else {
-                        // Se a próxima música não tiver link, o telão fica limpo em vez de puxar lixo
                         await db.collection('settings').doc('activePlaying').set({ song: null });
                     }
                 } catch (error) {
@@ -259,9 +258,6 @@
                     }
                 }, 1000);
             };
-
-            // Removido o useEffect automático que puxava o primeiro da fila sem autorização. 
-            // Agora o telão só toca se o admin clicar em "Tocar Música" ou se houver comando explícito.
 
             useEffect(() => {
                 if (!isTelaoMode || introCountdown) return;
@@ -511,6 +507,28 @@
             const handleDeleteSong = async (id) => {
                 if (confirm('Tem certeza que deseja remover esta música da fila?')) {
                     await db.collection('queue').doc(id).delete();
+                }
+            };
+
+            // NOVO: Botão exclusivo de Zerar Fila e Limpar Telão
+            const handleClearQueue = async () => {
+                if (confirm('Deseja realmente limpar toda a fila de espera e esvaziar o telão?')) {
+                    try {
+                        const batch = db.batch();
+                        queue.forEach(item => {
+                            batch.delete(db.collection('queue').doc(item.id));
+                        });
+                        await batch.commit();
+
+                        // Limpa o telão e fundo imediatamente
+                        await db.collection('settings').doc('activePlaying').set({ song: null });
+                        await db.collection('settings').doc('backgroundSong').set({ song: null });
+
+                        alert('Fila limpa e telão esvaziado com sucesso! 🧹');
+                    } catch (error) {
+                        console.error("Erro ao limpar fila: ", error);
+                        alert('Erro ao limpar a fila.');
+                    }
                 }
             };
 
@@ -806,6 +824,14 @@
                                 >
                                     <span>⏱️ Pular Automático (5 min):</span>
                                     <span className="underline">{autoSkipEnabled ? 'ATIVADO' : 'DESATIVADO'}</span>
+                                </button>
+
+                                <!-- Botão Novo: Zerar Fila e Limpar Telão -->
+                                <button 
+                                    onClick={handleClearQueue}
+                                    className="bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border border-orange-500/40 font-bold px-5 py-3 rounded-xl transition-all text-sm"
+                                >
+                                    🧹 Zerar Fila e Telão
                                 </button>
 
                                 <button 
