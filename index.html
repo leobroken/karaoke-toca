@@ -115,6 +115,12 @@
             const [youtubeInputs, setYoutubeInputs] = useState({});
             const [autoSkipEnabled, setAutoSkipEnabled] = useState(false);
 
+            // Gerenciamento de Usuários e Silenciamento
+            const [usersList, setUsersList] = useState([]);
+            const [mutedPhones, setMutedPhones] = useState({});
+            const [showUsersModal, setShowUsersModal] = useState(false);
+            const [mutedAlertMessage, setMutedAlertMessage] = useState(null);
+
             const [timeLeft, setTimeLeft] = useState(300);
             const timerRef = useRef(null);
             const intervalRef = useRef(null);
@@ -206,6 +212,17 @@
                     }
                 });
 
+                const unsubUsers = db.collection('users').onSnapshot(snapshot => {
+                    const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setUsersList(items);
+                });
+
+                const unsubMuted = db.collection('settings').doc('mutedUsers').onSnapshot(doc => {
+                    if (doc.exists) {
+                        setMutedPhones(doc.data() || {});
+                    }
+                });
+
                 return () => {
                     unsubQueue();
                     unsubHistory();
@@ -214,6 +231,8 @@
                     unsubActive();
                     unsubAutoSkip();
                     unsubBg();
+                    unsubUsers();
+                    unsubMuted();
                 };
             }, [activePlayingSong]);
 
@@ -310,7 +329,7 @@
                 setInputPhone(value);
             };
 
-            const handleLogin = (e) => {
+            const handleLogin = async (e) => {
                 e.preventDefault();
                 if (!inputName.trim() || !inputPhone.trim()) return;
                 const nameFormatted = inputName.trim();
@@ -324,6 +343,19 @@
 
                 setUser(userData);
                 localStorage.setItem('toca_karaoke_user', JSON.stringify(userData));
+
+                // Salva ou atualiza o usuário na coleção global de usuários para o Admin monitorar
+                try {
+                    const cleanPhoneId = phoneFormatted.replace(/\D/g, '');
+                    await db.collection('users').doc(cleanPhoneId).set({
+                        name: nameFormatted,
+                        phone: phoneFormatted,
+                        lastLogin: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } catch (err) {
+                    console.error("Erro ao registrar usuário no Firestore:", err);
+                }
+
                 setInputName('');
                 setInputPhone('');
             };
@@ -346,8 +378,27 @@
                 window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank');
             };
 
+            const handleToggleMuteUser = async (phone) => {
+                const cleanPhone = phone.replace(/\D/g, '');
+                const isCurrentlyMuted = !!mutedPhones[cleanPhone];
+                const updatedMuted = { ...mutedPhones, [cleanPhone]: !isCurrentlyMuted };
+                
+                try {
+                    await db.collection('settings').doc('mutedUsers').set(updatedMuted);
+                } catch (error) {
+                    console.error("Erro ao alterar silenciamento: ", error);
+                }
+            };
+
             const handleAddSong = async (e) => {
                 e.preventDefault();
+
+                // Verifica se o usuário atual está silenciado
+                const cleanUserPhone = user.phone ? user.phone.replace(/\D/g, '') : '';
+                if (mutedPhones[cleanUserPhone]) {
+                    setMutedAlertMessage(`${user.name} você está impedida de pedir músicas agora. Chama o guerreiro para saber o qué aconteceu.`);
+                    return;
+                }
                 
                 if (isPaused) {
                     setIsVideoMuted(true);
@@ -755,6 +806,12 @@
                                     🖥️ Abrir Modo Telão
                                 </button>
                                 <button 
+                                    onClick={() => setShowUsersModal(true)}
+                                    className="bg-sky-500 hover:bg-sky-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-sky-500/20 flex items-center gap-2 text-sm"
+                                >
+                                    👥 Usuários ({usersList.length})
+                                </button>
+                                <button 
                                     onClick={handleNextSong}
                                     className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 text-sm"
                                 >
@@ -1053,6 +1110,93 @@
                                 >
                                     Fechar 👍
                                 </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modal de Alerta para Usuário Silenciado */}
+                    {mutedAlertMessage && (
+                        <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
+                            <div className="bg-zinc-900 border border-red-500/50 rounded-2xl p-6 w-full max-w-sm shadow-2xl shadow-red-500/10 text-center">
+                                <div className="w-14 h-14 bg-red-500/20 border border-red-500/40 rounded-2xl mx-auto flex items-center justify-center text-2xl mb-3">
+                                    🚫
+                                </div>
+                                <h3 className="text-lg font-extrabold text-red-400 mb-2">Acesso Restrito</h3>
+                                <p className="text-xs text-zinc-300 leading-relaxed mb-5">
+                                    {mutedAlertMessage}
+                                </p>
+                                <button 
+                                    type="button"
+                                    onClick={() => setMutedAlertMessage(null)}
+                                    className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold py-2.5 rounded-xl transition-colors text-sm border border-zinc-700"
+                                >
+                                    Entendi 👍
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modal de Lista de Usuários Conectados para o Admin */}
+                    {showUsersModal && (
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[80vh] flex flex-col">
+                                <div className="flex justify-between items-center mb-4">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
+                                            👥 Usuários Conectados
+                                        </h3>
+                                        <p className="text-xs text-zinc-400">Total: {usersList.length} pessoa(s)</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => setShowUsersModal(false)}
+                                        className="text-zinc-400 hover:text-zinc-100 text-sm font-bold px-2 py-1 bg-zinc-800 rounded-lg"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                                    {usersList.length === 0 ? (
+                                        <div className="text-center py-8 text-zinc-500 text-xs border border-dashed border-zinc-800 rounded-xl">
+                                            Nenhum usuário registrado no momento.
+                                        </div>
+                                    ) : (
+                                        usersList.map((u) => {
+                                            const cleanP = u.phone ? u.phone.replace(/\D/g, '') : '';
+                                            const isMuted = !!mutedPhones[cleanP];
+
+                                            return (
+                                                <div key={u.id} className="bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl flex items-center justify-between gap-3">
+                                                    <div>
+                                                        <h4 className="font-bold text-zinc-100 text-sm">{u.name}</h4>
+                                                        <p className="text-xs text-zinc-400 font-mono">{u.phone}</p>
+                                                    </div>
+                                                    <div>
+                                                        <button
+                                                            onClick={() => handleToggleMuteUser(u.phone)}
+                                                            className={`text-xs font-bold px-3 py-2 rounded-xl transition-all border ${
+                                                                isMuted 
+                                                                    ? 'bg-red-500 text-zinc-950 border-red-400 shadow-lg shadow-red-500/20' 
+                                                                    : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
+                                                            }`}
+                                                        >
+                                                            {isMuted ? '🔇 Silenciado' : '🔊 Silenciar'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+
+                                <div className="mt-4 pt-3 border-t border-zinc-800">
+                                    <button 
+                                        onClick={() => setShowUsersModal(false)}
+                                        className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold py-2.5 rounded-xl transition-colors text-sm"
+                                    >
+                                        Fechar
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
