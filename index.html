@@ -67,6 +67,7 @@
             const [ratings, setRatings] = useState({});
             const [isPaused, setIsPaused] = useState(false);
             const [isTelaoMode, setIsTelaoMode] = useState(false);
+            const [activePlayingSong, setActivePlayingSong] = useState(null);
             
             const [showPausedModal, setShowPausedModal] = useState(false);
             const [isVideoMuted, setIsVideoMuted] = useState(true);
@@ -109,11 +110,18 @@
                     }
                 });
 
+                const unsubActive = db.collection('settings').doc('activePlaying').onSnapshot(doc => {
+                    if (doc.exists) {
+                        setActivePlayingSong(doc.data().song || null);
+                    }
+                });
+
                 return () => {
                     unsubQueue();
                     unsubHistoryReal();
                     unsubRatings();
                     unsubSettings();
+                    unsubActive();
                 };
             }, []);
 
@@ -196,6 +204,16 @@
                 }
             };
 
+            // Disparar a música selecionada para tocar no Telão
+            const handlePlayOnTelao = async (song) => {
+                try {
+                    await db.collection('settings').doc('activePlaying').set({ song: song });
+                    alert(`"${song.title}" enviada para o telão! 🎬`);
+                } catch (error) {
+                    console.error("Erro ao reproduzir no telão: ", error);
+                }
+            };
+
             const handleNextSong = async () => {
                 if (queue.length === 0) {
                     alert('A fila está vazia!');
@@ -209,7 +227,9 @@
                         user: current.user,
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
+                    // Remove da fila e limpa o player ativo se for o atual
                     await db.collection('queue').doc(current.id).delete();
+                    await db.collection('settings').doc('activePlaying').set({ song: null });
                 } catch (error) {
                     console.error("Erro ao avançar música: ", error);
                 }
@@ -270,11 +290,10 @@
             const topSinger = rankedHistory.length > 0 && rankedHistory[0].avgRating > 0 ? rankedHistory[0] : null;
 
             // ==========================================
-            // TELA DO MODO TELÃO (Modo Automático Otimizado)
+            // TELA DO MODO TELÃO (Com Disparo Direto do Admin)
             // ==========================================
             if (isTelaoMode) {
-                const currentPlaying = queue.length > 0 ? queue[0] : null;
-                const searchUrl = currentPlaying ? `https://www.youtube.com/results?search_query=${encodeURIComponent(currentPlaying.title + " " + currentPlaying.artist + " karaoke")}&autoplay=1` : '';
+                const searchUrl = activePlayingSong ? `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(activePlayingSong.title + " " + activePlayingSong.artist + " karaoke")}&autoplay=1` : '';
 
                 return (
                     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none">
@@ -282,26 +301,26 @@
                             <span className="bg-amber-500 text-zinc-950 font-black px-4 py-1.5 rounded-xl text-sm shadow-lg shadow-amber-500/20 uppercase tracking-wider">
                                 🖥️ Telão Toca do Guerreiro
                             </span>
-                            {currentPlaying && (
+                            {activePlayingSong && (
                                 <span className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-4 py-1.5 rounded-xl text-sm font-bold">
-                                    Cantando agora: <span className="text-amber-400">{currentPlaying.user}</span> — {currentPlaying.title} ({currentPlaying.artist})
+                                    Cantando agora: <span className="text-amber-400">{activePlayingSong.user}</span> — {activePlayingSong.title} ({activePlayingSong.artist})
                                 </span>
                             )}
                         </div>
 
                         <div className="w-full max-w-5xl aspect-video bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center relative">
-                            {currentPlaying ? (
+                            {activePlayingSong ? (
                                 <iframe 
                                     className="w-full h-full border-0"
-                                    src={`https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(currentPlaying.title + " " + currentPlaying.artist + " karaoke")}&autoplay=1`}
-                                    title="Automático Karaokê"
+                                    src={searchUrl}
+                                    title="Karaokê Player"
                                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                     allowFullScreen
                                 ></iframe>
                             ) : (
                                 <div className="text-center p-8">
-                                    <h2 className="text-3xl font-extrabold text-amber-500 mb-2">Fila de Karaokê Vazia!</h2>
-                                    <p className="text-zinc-400 text-base">Peça sua música pelo celular para começar a festa na Toca do Guerreiro 🎤</p>
+                                    <h2 className="text-3xl font-extrabold text-amber-500 mb-2">Aguardando Próxima Música...</h2>
+                                    <p className="text-zinc-400 text-base">O administrador escolherá a próxima apresentação na Área do Admin 🎤</p>
                                 </div>
                             )}
                         </div>
@@ -311,7 +330,7 @@
                                 onClick={handleNextSong}
                                 className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-6 py-3 rounded-xl shadow-lg transition-all text-sm"
                             >
-                                ⏭️ Pular para Próxima Música
+                                ⏭️ Pular para Próxima da Fila
                             </button>
                         </div>
                     </div>
@@ -498,13 +517,10 @@
                                         Pedir para o Telão 🎤
                                     </button>
                                 </form>
-                                <div className="mt-4 bg-zinc-950/50 p-3 rounded-xl border border-zinc-800/60 text-xs text-zinc-400">
-                                    <p>💡 <span className="text-zinc-300 font-medium">Modo Automático:</span> O telão busca e executa em sequência!</p>
-                                </div>
                             </div>
                         </div>
 
-                        {/* Fila de Espera */}
+                        {/* Fila de Espera com Botão de Tocar (Admin) */}
                         <div className="md:col-span-2 space-y-8">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
                                 <div className="flex justify-between items-center mb-4">
@@ -530,22 +546,32 @@
                                                     </div>
                                                 </div>
                                                 
-                                                {isAdmin && (
-                                                    <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-2">
+                                                    {isAdmin && (
+                                                        <button 
+                                                            onClick={() => handlePlayOnTelao(item)}
+                                                            className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-xs px-3 py-2 rounded-xl transition-all shadow-md shadow-emerald-500/20"
+                                                        >
+                                                            ▶️ Tocar Música
+                                                        </button>
+                                                    )}
+                                                    {isAdmin && (
                                                         <button 
                                                             onClick={() => setEditingSong(item)}
-                                                            className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs px-3 py-1.5 rounded-lg transition-colors border border-zinc-700"
+                                                            className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs px-3 py-2 rounded-xl transition-colors border border-zinc-700"
                                                         >
                                                             Editar
                                                         </button>
+                                                    )}
+                                                    {isAdmin && (
                                                         <button 
                                                             onClick={() => handleDeleteSong(item.id)}
-                                                            className="bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs px-3 py-1.5 rounded-lg transition-colors border border-red-500/30"
+                                                            className="bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs px-3 py-2 rounded-xl transition-colors border border-red-500/30"
                                                         >
                                                             Excluir
                                                         </button>
-                                                    </div>
-                                                )}
+                                                    )}
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
