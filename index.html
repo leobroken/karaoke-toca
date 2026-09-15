@@ -31,7 +31,6 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // Configuração do Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyCW9c9Uv0kekNSu1E6Y32toewgWm4Ngeps",
             authDomain: "karaoke-toca-30cf3.firebaseapp.com",
@@ -46,7 +45,6 @@
         }
         const db = firebase.firestore();
 
-        // Função auxiliar para extrair o ID do link do YouTube
         function getYouTubeEmbedUrl(url) {
             if (!url) return '';
             let videoId = '';
@@ -63,7 +61,6 @@
         }
 
         function App() {
-            // Sessão do Usuário Comum com Nome e Celular
             const [user, setUser] = useState(() => {
                 const saved = localStorage.getItem('toca_karaoke_user');
                 if (saved) {
@@ -82,25 +79,25 @@
             const [songYoutubeLink, setSongYoutubeLink] = useState('');
             
             const [queue, setQueue] = useState([]);
+            const queueRef = useRef(queue); // Referência atualizada da fila para uso em timers
+            useEffect(() => { queueRef.current = queue; }, [queue]);
+
             const [history, setHistory] = useState([]);
             const [ratings, setRatings] = useState({});
             const [isPaused, setIsPaused] = useState(false);
             const [isTelaoMode, setIsTelaoMode] = useState(false);
             const [activePlayingSong, setActivePlayingSong] = useState(null);
             
-            // Link de música de fundo / ambiente do Admin
             const [backgroundLinkInput, setBackgroundLinkInput] = useState('');
             const [backgroundSongActive, setBackgroundSongActive] = useState(null);
 
-            // Estados da Contagem Regressiva de Entrada (3, 2, 1) no Telão
-            const [introCountdown, setIntroCountdown] = useState(null); // { song, count: 3 }
+            const [introCountdown, setIntroCountdown] = useState(null);
             const introTimerRef = useRef(null);
 
             const [showPausedModal, setShowPausedModal] = useState(false);
             const [isVideoMuted, setIsVideoMuted] = useState(true);
             const videoRef = useRef(null);
 
-            // Sessão do Admin por 24 horas
             const [isAdmin, setIsAdmin] = useState(() => {
                 const adminSaved = localStorage.getItem('toca_karaoke_admin');
                 if (adminSaved) {
@@ -115,18 +112,13 @@
             const [adminModal, setAdminModal] = useState(false);
             const [adminPassword, setAdminPassword] = useState('');
             const [editingSong, setEditingSong] = useState(null);
-            
             const [youtubeInputs, setYoutubeInputs] = useState({});
-            
-            // Estado do Pular Automático sincronizado em tempo real via Firebase
             const [autoSkipEnabled, setAutoSkipEnabled] = useState(false);
 
-            // Contagem regressiva visual em segundos (5 minutos = 300 segundos)
             const [timeLeft, setTimeLeft] = useState(300);
             const timerRef = useRef(null);
             const intervalRef = useRef(null);
 
-            // Verificar se o modo telao foi ativado via URL (?telao=true)
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
                 if (params.get('telao') === 'true') {
@@ -134,7 +126,41 @@
                 }
             }, []);
 
-            // Sincronização em tempo real com o Firestore
+            // Função de avançar música isolada para ser acessada com segurança pelo temporizador
+            const handleNextSong = async () => {
+                const currentQueue = queueRef.current;
+                if (currentQueue.length === 0) {
+                    await db.collection('settings').doc('activePlaying').set({ song: null });
+                    return;
+                }
+
+                const current = currentQueue[0];
+                try {
+                    await db.collection('history').add({
+                        title: current.title,
+                        artist: current.artist,
+                        user: current.user,
+                        phone: current.phone || '',
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    
+                    await db.collection('queue').doc(current.id).delete();
+
+                    const nextSong = currentQueue.length > 1 ? currentQueue[1] : null;
+                    if (nextSong && nextSong.youtubeLink) {
+                        const embedUrl = getYouTubeEmbedUrl(nextSong.youtubeLink);
+                        await db.collection('settings').doc('backgroundSong').set({ song: null });
+                        await db.collection('settings').doc('activePlaying').set({ 
+                            song: { ...nextSong, embedUrl: embedUrl } 
+                        });
+                    } else {
+                        await db.collection('settings').doc('activePlaying').set({ song: null });
+                    }
+                } catch (error) {
+                    console.error("Erro ao avançar música: ", error);
+                }
+            };
+
             useEffect(() => {
                 const unsubQueue = db.collection('queue').orderBy('createdAt', 'asc').onSnapshot(snapshot => {
                     const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -161,8 +187,6 @@
                 const unsubActive = db.collection('settings').doc('activePlaying').onSnapshot(doc => {
                     if (doc.exists) {
                         const newSong = doc.data().song || null;
-                        
-                        // Se for uma música de cliente nova, aciona a vinheta de 3, 2, 1 no Telão antes de tocar!
                         if (newSong && (!activePlayingSong || activePlayingSong.id !== newSong.id)) {
                             triggerIntroVinheta(newSong);
                         } else if (!newSong) {
@@ -194,7 +218,6 @@
                 };
             }, [activePlayingSong]);
 
-            // Disparar vinheta de contagem regressiva de 3 segundos
             const triggerIntroVinheta = (song) => {
                 if (!isTelaoMode) {
                     setActivePlayingSong(song);
@@ -203,7 +226,6 @@
 
                 if (introTimerRef.current) clearInterval(introTimerRef.current);
 
-                // Inicia a contagem no 3
                 setIntroCountdown({ song, count: 3 });
 
                 let currentCount = 3;
@@ -214,12 +236,11 @@
                     } else {
                         clearInterval(introTimerRef.current);
                         setIntroCountdown(null);
-                        setActivePlayingSong(song); // Libera o vídeo para tocar após o 1!
+                        setActivePlayingSong(song);
                     }
                 }, 1000);
             };
 
-            // Lógica inteligente: Se entrar música na fila e estiver tocando música de fundo, substitui automaticamente
             useEffect(() => {
                 if (queue.length > 0 && backgroundSongActive) {
                     const firstSong = queue[0];
@@ -235,7 +256,7 @@
                 }
             }, [queue, backgroundSongActive]);
 
-            // Gerenciamento do temporizador de 5 minutos e contagem regressiva no Telão
+            // Cronômetro automático corrigido de 5 minutos
             useEffect(() => {
                 if (!isTelaoMode || introCountdown) return;
 
@@ -243,7 +264,7 @@
                 if (intervalRef.current) clearInterval(intervalRef.current);
 
                 if (autoSkipEnabled && activePlayingSong && activePlayingSong.embedUrl) {
-                    setTimeLeft(300); // 5 minutos
+                    setTimeLeft(300);
 
                     intervalRef.current = setInterval(() => {
                         setTimeLeft(prev => {
@@ -463,40 +484,6 @@
                 await db.collection('settings').doc('backgroundSong').set({ song: null });
             };
 
-            // Avançar música automaticamente
-            const handleNextSong = async () => {
-                if (queue.length === 0) {
-                    await db.collection('settings').doc('activePlaying').set({ song: null });
-                    return;
-                }
-
-                const current = queue[0];
-                try {
-                    await db.collection('history').add({
-                        title: current.title,
-                        artist: current.artist,
-                        user: current.user,
-                        phone: current.phone || '',
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                    
-                    await db.collection('queue').doc(current.id).delete();
-
-                    const nextSong = queue.length > 1 ? queue[1] : null;
-                    if (nextSong && nextSong.youtubeLink) {
-                        const embedUrl = getYouTubeEmbedUrl(nextSong.youtubeLink);
-                        await db.collection('settings').doc('backgroundSong').set({ song: null });
-                        await db.collection('settings').doc('activePlaying').set({ 
-                            song: { ...nextSong, embedUrl: embedUrl } 
-                        });
-                    } else {
-                        await db.collection('settings').doc('activePlaying').set({ song: null });
-                    }
-                } catch (error) {
-                    console.error("Erro ao avançar música: ", error);
-                }
-            };
-
             const handleDeleteSong = async (id) => {
                 if (confirm('Tem certeza que deseja remover esta música da fila?')) {
                     await db.collection('queue').doc(id).delete();
@@ -557,15 +544,11 @@
                 return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
             };
 
-            // ==========================================
-            // TELA DO MODO TELÃO
-            // ==========================================
             if (isTelaoMode) {
                 const currentPlaying = activePlayingSong || backgroundSongActive;
 
                 return (
                     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none">
-                        {/* Vinheta de Contagem Regressiva (3, 2, 1) antes da música do cliente */}
                         {introCountdown ? (
                             <div className="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center z-50 p-6 text-center animate-fade-in">
                                 <div className="bg-gradient-to-br from-amber-500/20 to-zinc-900 border border-amber-500/50 p-10 rounded-3xl shadow-2xl max-w-2xl w-full">
@@ -615,7 +598,6 @@
                             )}
                         </div>
 
-                        {/* Botão Inferior Direito */}
                         <div className="absolute bottom-4 right-6 z-10">
                             {autoSkipEnabled && activePlayingSong ? (
                                 <div className="bg-zinc-900/90 backdrop-blur border border-amber-500/40 text-amber-400 font-bold px-6 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm">
@@ -637,9 +619,6 @@
                 );
             }
 
-            // ==========================================
-            // TELA DE LOGIN COM NOME E CELULAR
-            // ==========================================
             if (!user) {
                 return (
                     <div className="flex flex-col items-center justify-center min-h-screen px-4 bg-gradient-to-b from-zinc-900 to-zinc-950 py-8">
@@ -691,12 +670,10 @@
 
             return (
                 <div className="max-w-4xl mx-auto px-4 py-8">
-                    {/* Banner Oficial no Topo */}
                     <div className="w-full h-48 sm:h-72 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl mb-6">
                         <img src="banner.jpg" alt="Toca do Guerreiro Karaokê" className="w-full h-full object-cover object-center" />
                     </div>
 
-                    {/* Destaque: Melhor Cantor da Noite */}
                     <div className="bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-zinc-900 border border-amber-500/40 rounded-2xl p-4 sm:p-5 mb-6 flex items-center gap-4 shadow-xl shadow-amber-500/5">
                         <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-amber-500 text-zinc-950 flex items-center justify-center text-2xl font-black shrink-0 shadow-lg shadow-amber-500/30">
                             👑
@@ -719,7 +696,6 @@
                         </div>
                     </div>
 
-                    {/* Header com dados do usuário e botão Sair */}
                     <header className="flex justify-between items-center bg-zinc-900/80 backdrop-blur border border-zinc-800 p-4 rounded-2xl mb-8">
                         <div className="flex items-center gap-4">
                             <div>
@@ -758,7 +734,6 @@
                         </div>
                     </header>
 
-                    {/* Painel de Controle do Admin */}
                     {isAdmin && (
                         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 mb-8 space-y-5">
                             <h3 className="text-amber-400 font-bold text-lg flex items-center gap-2">
@@ -785,7 +760,6 @@
                                     {isPaused ? '▶️ Retomar Pedidos' : '⏸️ Pausar Pedidos'}
                                 </button>
 
-                                {/* Botão Liga/Desliga Pular Automático sincronizado no Firebase */}
                                 <button 
                                     onClick={handleToggleAutoSkip}
                                     className={`${autoSkipEnabled ? 'bg-emerald-500 text-zinc-950 font-black' : 'bg-zinc-800 text-zinc-400 border border-zinc-700 font-medium'} px-4 py-3 rounded-xl transition-all text-xs flex items-center gap-2`}
@@ -802,7 +776,6 @@
                                 </button>
                             </div>
 
-                            {/* Seção Nova: Adicionar Música Aleatória/Ambiente de Fundo */}
                             <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl">
                                 <h4 className="text-zinc-200 text-sm font-bold mb-2 flex items-center gap-2">
                                     🎵 Música Aleatória / Fundo para evitar Silêncio
@@ -846,7 +819,6 @@
                     )}
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        {/* Formulário para Pedir Música com Link Opcional */}
                         <div className="md:col-span-1">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sticky top-6">
                                 <h3 className="text-lg font-bold text-zinc-100 mb-4">Pedir Música</h3>
@@ -893,7 +865,6 @@
                             </div>
                         </div>
 
-                        {/* Fila de Espera com Campo de Link Sincronizado para todos os Admins */}
                         <div className="md:col-span-2 space-y-8">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
                                 <div className="flex justify-between items-center mb-4">
@@ -940,7 +911,6 @@
                                                     </div>
                                                 </div>
 
-                                                {/* Controles para o Admin com Link Sincronizado via Firebase */}
                                                 {isAdmin && (
                                                     <div className="flex flex-col sm:flex-row items-center gap-2 pt-2 border-t border-zinc-900">
                                                         <input 
@@ -972,7 +942,6 @@
                                 )}
                             </div>
 
-                            {/* Ranking / Músicas Tocadas e Avaliadas */}
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
                                 <h3 className="text-lg font-bold text-zinc-100 mb-1">Ranking de Performances</h3>
                                 <p className="text-xs text-zinc-400 mb-4">Avalie de 1 a 5 estrelas as apresentações que já aconteceram!</p>
@@ -1002,7 +971,6 @@
                                                         <p className="text-xs text-zinc-400">Cantado por: <span className="text-amber-400 font-medium">{item.user}</span></p>
                                                     </div>
 
-                                                    {/* Sistema de Votação por Estrelas */}
                                                     <div>
                                                         {isOwner ? (
                                                             <span className="bg-zinc-900 text-zinc-500 text-[11px] font-medium px-3 py-2 rounded-xl border border-zinc-800 block text-center">
@@ -1032,7 +1000,6 @@
                         </div>
                     </div>
 
-                    {/* Pop-up (Modal) com Vídeo Vertical e Botão Dedicado de Ativar Som */}
                     {showPausedModal && (
                         <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
                             <div className="bg-zinc-900 border border-amber-500/50 rounded-2xl p-6 w-full max-w-xs sm:max-w-sm shadow-2xl shadow-amber-500/10 text-center">
@@ -1074,7 +1041,6 @@
                         </div>
                     )}
 
-                    {/* Modal de Senha do Admin */}
                     {adminModal && (
                         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
@@ -1109,7 +1075,6 @@
                         </div>
                     )}
 
-                    {/* Modal de Edição de Música (Admin) */}
                     {editingSong && (
                         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
@@ -1141,7 +1106,7 @@
                                             onClick={() => setEditingSong(null)}
                                             className="w-1/2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium py-3 rounded-xl transition-colors text-sm"
                                         >
-                                            Cancelar`
+                                            Cancelar
                                         </button>
                                         <button 
                                             type="submit"
