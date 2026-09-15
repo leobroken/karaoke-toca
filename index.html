@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Karaokê - Toca do Guerreiro</title>
+    <!-- Configuração para PWA (Instalar no Celular) -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#f59e0b">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Karaokê Toca">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -247,7 +253,6 @@
                 return { ...item, avgRating: avg, totalVotes: values.length };
             }).sort((a, b) => b.avgRating - a.avgRating || b.totalVotes - a.totalVotes);
 
-            // Descobrir o melhor cantor da noite (1º lugar do ranking com pelo menos 1 voto ou média > 0)
             const topSinger = rankedHistory.length > 0 && rankedHistory[0].avgRating > 0 ? rankedHistory[0] : null;
 
             if (!user) {
