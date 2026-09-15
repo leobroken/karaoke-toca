@@ -270,66 +270,11 @@
             const topSinger = rankedHistory.length > 0 && rankedHistory[0].avgRating > 0 ? rankedHistory[0] : null;
 
             // ==========================================
-            // TELA DO MODO TELÃO (Com YouTube Player API Inteligente)
+            // TELA DO MODO TELÃO (Modo Automático Otimizado)
             // ==========================================
             if (isTelaoMode) {
                 const currentPlaying = queue.length > 0 ? queue[0] : null;
-                const playerRef = useRef(null);
-                const ytPlayerInstance = useRef(null);
-
-                // Carrega a API do YouTube na página do Telão
-                useEffect(() => {
-                    if (!window.YT) {
-                        const tag = document.createElement('script');
-                        tag.src = "https://www.youtube.com/iframe_api";
-                        const firstScriptTag = document.getElementsByTagName('script')[0];
-                        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-                    }
-
-                    window.onYouTubeIframeAPIReady = () => {
-                        initPlayer();
-                    };
-
-                    if (window.YT && window.YT.Player) {
-                        initPlayer();
-                    }
-                }, []);
-
-                const initPlayer = () => {
-                    if (!ytPlayerInstance.current && playerRef.current) {
-                        ytPlayerInstance.current = new window.YT.Player('youtube-player', {
-                            height: '100%',
-                            width: '100%',
-                            playerVars: {
-                                'autoplay': 1,
-                                'controls': 1,
-                                'rel': 0,
-                                'enablejsapi': 1
-                            },
-                            events: {
-                                'onReady': (event) => {
-                                    if (currentPlaying) {
-                                        loadCurrentSong(currentPlaying);
-                                    }
-                                }
-                            }
-                        });
-                    }
-                };
-
-                const loadCurrentSong = (song) => {
-                    if (ytPlayerInstance.current && ytPlayerInstance.current.loadVideoByQuery) {
-                        const query = `${song.title} ${song.artist} karaoke`;
-                        ytPlayerInstance.current.loadVideoByQuery({ query: query, startSeconds: 0 });
-                    }
-                };
-
-                // Sempre que mudar a música da fila, atualiza o player automaticamente
-                useEffect(() => {
-                    if (currentPlaying && ytPlayerInstance.current && ytPlayerInstance.current.loadVideoByQuery) {
-                        loadCurrentSong(currentPlaying);
-                    }
-                }, [currentPlaying?.id]);
+                const searchUrl = currentPlaying ? `https://www.youtube.com/results?search_query=${encodeURIComponent(currentPlaying.title + " " + currentPlaying.artist + " karaoke")}&autoplay=1` : '';
 
                 return (
                     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none">
@@ -346,7 +291,13 @@
 
                         <div className="w-full max-w-5xl aspect-video bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center relative">
                             {currentPlaying ? (
-                                <div id="youtube-player" ref={playerRef} className="w-full h-full"></div>
+                                <iframe 
+                                    className="w-full h-full border-0"
+                                    src={`https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(currentPlaying.title + " " + currentPlaying.artist + " karaoke")}&autoplay=1`}
+                                    title="Automático Karaokê"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                ></iframe>
                             ) : (
                                 <div className="text-center p-8">
                                     <h2 className="text-3xl font-extrabold text-amber-500 mb-2">Fila de Karaokê Vazia!</h2>
@@ -548,7 +499,7 @@
                                     </button>
                                 </form>
                                 <div className="mt-4 bg-zinc-950/50 p-3 rounded-xl border border-zinc-800/60 text-xs text-zinc-400">
-                                    <p>💡 <span className="text-zinc-300 font-medium">Automático:</span> O telão busca e toca a versão de karaokê na hora!</p>
+                                    <p>💡 <span className="text-zinc-300 font-medium">Modo Automático:</span> O telão busca e executa em sequência!</p>
                                 </div>
                             </div>
                         </div>
@@ -755,7 +706,7 @@
                                         />
                                     </div>
                                     <div>
-                                        <label className="block t<text-xs font-medium text-zinc-400 mb-1">Artista / Banda</label>
+                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Artista / Banda</label>
                                         <input 
                                             type="text" 
                                             required
