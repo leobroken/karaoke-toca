@@ -79,6 +79,7 @@
             const [inputPhone, setInputPhone] = useState('');
             const [songTitle, setSongTitle] = useState('');
             const [songArtist, setSongArtist] = useState('');
+            const [songYoutubeLink, setSongYoutubeLink] = useState('');
             
             const [queue, setQueue] = useState([]);
             const [history, setHistory] = useState([]);
@@ -87,6 +88,14 @@
             const [isTelaoMode, setIsTelaoMode] = useState(false);
             const [activePlayingSong, setActivePlayingSong] = useState(null);
             
+            // Link de música de fundo / ambiente do Admin
+            const [backgroundLinkInput, setBackgroundLinkInput] = useState('');
+            const [backgroundSongActive, setBackgroundSongActive] = useState(null);
+
+            // Estados da Contagem Regressiva de Entrada (3, 2, 1) no Telão
+            const [introCountdown, setIntroCountdown] = useState(null); // { song, count: 3 }
+            const introTimerRef = useRef(null);
+
             const [showPausedModal, setShowPausedModal] = useState(false);
             const [isVideoMuted, setIsVideoMuted] = useState(true);
             const videoRef = useRef(null);
@@ -109,19 +118,13 @@
             
             const [youtubeInputs, setYoutubeInputs] = useState({});
             
-            const [autoSkipEnabled, setAutoSkipEnabled] = useState(() => {
-                return localStorage.getItem('toca_autoskip') === 'true';
-            });
+            // Estado do Pular Automático sincronizado em tempo real via Firebase
+            const [autoSkipEnabled, setAutoSkipEnabled] = useState(false);
 
             // Contagem regressiva visual em segundos (5 minutos = 300 segundos)
             const [timeLeft, setTimeLeft] = useState(300);
             const timerRef = useRef(null);
             const intervalRef = useRef(null);
-
-            // Sincronizar o estado do autoSkip com o localStorage para o Telão enxergar
-            useEffect(() => {
-                localStorage.setItem('toca_autoskip', autoSkipEnabled);
-            }, [autoSkipEnabled]);
 
             // Verificar se o modo telao foi ativado via URL (?telao=true)
             useEffect(() => {
@@ -157,7 +160,26 @@
 
                 const unsubActive = db.collection('settings').doc('activePlaying').onSnapshot(doc => {
                     if (doc.exists) {
-                        setActivePlayingSong(doc.data().song || null);
+                        const newSong = doc.data().song || null;
+                        
+                        // Se for uma música de cliente nova, aciona a vinheta de 3, 2, 1 no Telão antes de tocar!
+                        if (newSong && (!activePlayingSong || activePlayingSong.id !== newSong.id)) {
+                            triggerIntroVinheta(newSong);
+                        } else if (!newSong) {
+                            setActivePlayingSong(null);
+                        }
+                    }
+                });
+
+                const unsubAutoSkip = db.collection('settings').doc('autoSkip').onSnapshot(doc => {
+                    if (doc.exists) {
+                        setAutoSkipEnabled(doc.data().enabled || false);
+                    }
+                });
+
+                const unsubBg = db.collection('settings').doc('backgroundSong').onSnapshot(doc => {
+                    if (doc.exists) {
+                        setBackgroundSongActive(doc.data().song || null);
                     }
                 });
 
@@ -167,22 +189,62 @@
                     unsubRatings();
                     unsubSettings();
                     unsubActive();
+                    unsubAutoSkip();
+                    unsubBg();
                 };
-            }, []);
+            }, [activePlayingSong]);
+
+            // Disparar vinheta de contagem regressiva de 3 segundos
+            const triggerIntroVinheta = (song) => {
+                if (!isTelaoMode) {
+                    setActivePlayingSong(song);
+                    return;
+                }
+
+                if (introTimerRef.current) clearInterval(introTimerRef.current);
+
+                // Inicia a contagem no 3
+                setIntroCountdown({ song, count: 3 });
+
+                let currentCount = 3;
+                introTimerRef.current = setInterval(() => {
+                    currentCount -= 1;
+                    if (currentCount > 0) {
+                        setIntroCountdown({ song, count: currentCount });
+                    } else {
+                        clearInterval(introTimerRef.current);
+                        setIntroCountdown(null);
+                        setActivePlayingSong(song); // Libera o vídeo para tocar após o 1!
+                    }
+                }, 1000);
+            };
+
+            // Lógica inteligente: Se entrar música na fila e estiver tocando música de fundo, substitui automaticamente
+            useEffect(() => {
+                if (queue.length > 0 && backgroundSongActive) {
+                    const firstSong = queue[0];
+                    if (firstSong.youtubeLink) {
+                        const embedUrl = getYouTubeEmbedUrl(firstSong.youtubeLink);
+                        if (embedUrl) {
+                            db.collection('settings').doc('backgroundSong').set({ song: null });
+                            db.collection('settings').doc('activePlaying').set({ 
+                                song: { ...firstSong, embedUrl: embedUrl } 
+                            });
+                        }
+                    }
+                }
+            }, [queue, backgroundSongActive]);
 
             // Gerenciamento do temporizador de 5 minutos e contagem regressiva no Telão
             useEffect(() => {
-                if (!isTelaoMode) return;
+                if (!isTelaoMode || introCountdown) return;
 
                 if (timerRef.current) clearTimeout(timerRef.current);
                 if (intervalRef.current) clearInterval(intervalRef.current);
 
-                const isAutoOn = localStorage.getItem('toca_autoskip') === 'true';
-
-                if (isAutoOn && activePlayingSong && activePlayingSong.embedUrl) {
+                if (autoSkipEnabled && activePlayingSong && activePlayingSong.embedUrl) {
                     setTimeLeft(300); // 5 minutos
 
-                    // Intervalo para atualizar o reloginho a cada 1 segundo
                     intervalRef.current = setInterval(() => {
                         setTimeLeft(prev => {
                             if (prev <= 1) {
@@ -193,7 +255,6 @@
                         });
                     }, 1000);
 
-                    // Timeout para disparar o avanço aos 5 minutos cheios
                     timerRef.current = setTimeout(() => {
                         handleNextSong();
                     }, 5 * 60 * 1000);
@@ -205,9 +266,17 @@
                     if (timerRef.current) clearTimeout(timerRef.current);
                     if (intervalRef.current) clearInterval(intervalRef.current);
                 };
-            }, [isTelaoMode, activePlayingSong, autoSkipEnabled]);
+            }, [isTelaoMode, activePlayingSong, autoSkipEnabled, introCountdown]);
 
-            // Máscara automática para o telefone: (XX) XXXXX-XXXX
+            const handleToggleAutoSkip = async () => {
+                const newState = !autoSkipEnabled;
+                try {
+                    await db.collection('settings').doc('autoSkip').set({ enabled: newState });
+                } catch (error) {
+                    console.error("Erro ao alterar Pular Automático: ", error);
+                }
+            };
+
             const handlePhoneChange = (e) => {
                 let value = e.target.value.replace(/\D/g, '');
                 if (value.length > 11) value = value.slice(0, 11);
@@ -266,16 +335,29 @@
                 }
 
                 try {
-                    await db.collection('queue').add({
+                    const songData = {
                         title: songTitle.trim(),
                         artist: songArtist.trim(),
                         user: user.name,
                         phone: user.phone,
-                        youtubeLink: '',
+                        youtubeLink: songYoutubeLink.trim(),
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
+                    };
+
+                    const docRef = await db.collection('queue').add(songData);
+                    
+                    if (!activePlayingSong && !backgroundSongActive && songYoutubeLink.trim()) {
+                        const embedUrl = getYouTubeEmbedUrl(songYoutubeLink.trim());
+                        if (embedUrl) {
+                            await db.collection('settings').doc('activePlaying').set({ 
+                                song: { id: docRef.id, ...songData, embedUrl: embedUrl } 
+                            });
+                        }
+                    }
+
                     setSongTitle('');
                     setSongArtist('');
+                    setSongYoutubeLink('');
                     alert('Música enviada para o telão com sucesso! 🎤');
                 } catch (error) {
                     console.error("Erro ao adicionar música: ", error);
@@ -340,6 +422,7 @@
 
                 try {
                     await db.collection('queue').doc(song.id).update({ youtubeLink: link.trim() });
+                    await db.collection('settings').doc('backgroundSong').set({ song: null });
 
                     await db.collection('settings').doc('activePlaying').set({ 
                         song: { ...song, youtubeLink: link.trim(), embedUrl: embedUrl } 
@@ -349,12 +432,44 @@
                 }
             };
 
+            const handlePlayBackgroundSong = async (e) => {
+                e.preventDefault();
+                if (!backgroundLinkInput.trim()) return;
+
+                const embedUrl = getYouTubeEmbedUrl(backgroundLinkInput.trim());
+                if (!embedUrl) {
+                    alert('Link do YouTube inválido.');
+                    return;
+                }
+
+                try {
+                    const bgSong = {
+                        title: 'Música de Fundo / Ambiente',
+                        artist: 'Bar Toca do Guerreiro',
+                        user: 'Administração',
+                        embedUrl: embedUrl
+                    };
+
+                    await db.collection('settings').doc('backgroundSong').set({ song: bgSong });
+                    await db.collection('settings').doc('activePlaying').set({ song: null });
+                    setBackgroundLinkInput('');
+                    alert('Música de fundo ativada no telão! Ela sairá automaticamente quando chegar um pedido na fila 🎵');
+                } catch (error) {
+                    console.error("Erro ao ativar música de fundo: ", error);
+                }
+            };
+
+            const handleStopBackgroundSong = async () => {
+                await db.collection('settings').doc('backgroundSong').set({ song: null });
+            };
+
             // Avançar música automaticamente
             const handleNextSong = async () => {
                 if (queue.length === 0) {
                     await db.collection('settings').doc('activePlaying').set({ song: null });
                     return;
                 }
+
                 const current = queue[0];
                 try {
                     await db.collection('history').add({
@@ -370,6 +485,7 @@
                     const nextSong = queue.length > 1 ? queue[1] : null;
                     if (nextSong && nextSong.youtubeLink) {
                         const embedUrl = getYouTubeEmbedUrl(nextSong.youtubeLink);
+                        await db.collection('settings').doc('backgroundSong').set({ song: null });
                         await db.collection('settings').doc('activePlaying').set({ 
                             song: { ...nextSong, embedUrl: embedUrl } 
                         });
@@ -435,52 +551,73 @@
 
             const topSinger = rankedHistory.length > 0 && rankedHistory[0].avgRating > 0 ? rankedHistory[0] : null;
 
-            // Formatar segundos em MM:SS para o telão
             const formatTime = (seconds) => {
                 const mins = Math.floor(seconds / 60);
                 const secs = seconds % 60;
                 return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
             };
 
-            const isAutoOn = localStorage.getItem('toca_autoskip') === 'true';
-
             // ==========================================
             // TELA DO MODO TELÃO
             // ==========================================
             if (isTelaoMode) {
+                const currentPlaying = activePlayingSong || backgroundSongActive;
+
                 return (
                     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none">
+                        {/* Vinheta de Contagem Regressiva (3, 2, 1) antes da música do cliente */}
+                        {introCountdown ? (
+                            <div className="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center z-50 p-6 text-center animate-fade-in">
+                                <div className="bg-gradient-to-br from-amber-500/20 to-zinc-900 border border-amber-500/50 p-10 rounded-3xl shadow-2xl max-w-2xl w-full">
+                                    <span className="text-amber-400 font-bold uppercase tracking-widest text-sm sm:text-base block mb-2">🎤 Próxima Performance</span>
+                                    <h2 className="text-3xl sm:text-5xl font-extrabold text-zinc-100 mb-3">
+                                        Atenção, <span className="text-amber-400">{introCountdown.song.user}</span>!
+                                    </h2>
+                                    <p className="text-zinc-300 text-lg sm:text-xl mb-6">
+                                        Sua música <span className="font-bold text-amber-300">"{introCountdown.song.title}"</span> começa em:
+                                    </p>
+                                    <div className="w-28 h-28 sm:w-36 sm:h-36 mx-auto rounded-full bg-amber-500 text-zinc-950 flex items-center justify-center text-6xl sm:text-7xl font-black shadow-lg shadow-amber-500/40 animate-bounce">
+                                        {introCountdown.count}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
+
                         <div className="absolute top-4 left-6 flex items-center gap-3 z-10">
                             <span className="bg-amber-500 text-zinc-950 font-black px-4 py-1.5 rounded-xl text-sm shadow-lg shadow-amber-500/20 uppercase tracking-wider">
                                 🖥️ Telão Toca do Guerreiro
                             </span>
-                            {activePlayingSong && (
+                            {currentPlaying && (
                                 <span className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-4 py-1.5 rounded-xl text-sm font-bold">
-                                    Cantando agora: <span className="text-amber-400">{activePlayingSong.user}</span> — {activePlayingSong.title} ({activePlayingSong.artist})
+                                    {backgroundSongActive ? (
+                                        <span className="text-emerald-400">🎵 Tocando som ambiente / fundo do bar</span>
+                                    ) : (
+                                        <span>Cantando agora: <span className="text-amber-400">{currentPlaying.user}</span> — {currentPlaying.title} ({currentPlaying.artist})</span>
+                                    )}
                                 </span>
                             )}
                         </div>
 
                         <div className="w-full max-w-5xl aspect-video bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center relative">
-                            {activePlayingSong && activePlayingSong.embedUrl ? (
+                            {currentPlaying && currentPlaying.embedUrl ? (
                                 <iframe 
                                     className="w-full h-full border-0"
-                                    src={activePlayingSong.embedUrl}
-                                    title="Karaokê Player"
+                                    src={currentPlaying.embedUrl}
+                                    title="Media Player"
                                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                     allowFullScreen
                                 ></iframe>
                             ) : (
                                 <div className="text-center p-8">
                                     <h2 className="text-3xl font-extrabold text-amber-500 mb-2">Aguardando Próxima Música...</h2>
-                                    <p className="text-zinc-400 text-base">O administrador inserirá o link do YouTube na Área do Admin para iniciar 🎤</p>
+                                    <p className="text-zinc-400 text-base">Peça uma música ou adicione uma música de fundo no Painel Admin 🎤</p>
                                 </div>
                             )}
                         </div>
 
-                        {/* Botão Inferior Direito: Cronômetro se Auto Ativado ou Botão Pular Manual */}
+                        {/* Botão Inferior Direito */}
                         <div className="absolute bottom-4 right-6 z-10">
-                            {isAutoOn && activePlayingSong ? (
+                            {autoSkipEnabled && activePlayingSong ? (
                                 <div className="bg-zinc-900/90 backdrop-blur border border-amber-500/40 text-amber-400 font-bold px-6 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm">
                                     <span>⏳ Próxima música em:</span>
                                     <span className="font-mono text-zinc-100 text-base bg-zinc-950 px-2.5 py-1 rounded-lg border border-zinc-800">
@@ -489,10 +626,10 @@
                                 </div>
                             ) : (
                                 <button 
-                                    onClick={handleNextSong}
+                                    onClick={backgroundSongActive ? handleStopBackgroundSong : handleNextSong}
                                     className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-6 py-3 rounded-xl shadow-lg transition-all text-sm"
                                 >
-                                    ⏭️ Pular para Próxima da Fila
+                                    {backgroundSongActive ? '⏹️ Parar Música de Fundo' : '⏭️ Pular para Próxima da Fila'}
                                 </button>
                             )}
                         </div>
@@ -623,10 +760,11 @@
 
                     {/* Painel de Controle do Admin */}
                     {isAdmin && (
-                        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 mb-8">
-                            <h3 className="text-amber-400 font-bold text-lg mb-4 flex items-center gap-2">
+                        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 mb-8 space-y-5">
+                            <h3 className="text-amber-400 font-bold text-lg flex items-center gap-2">
                                 👑 Painel de Administração
                             </h3>
+                            
                             <div className="flex flex-wrap gap-4 items-center">
                                 <button 
                                     onClick={openTelaoWindow}
@@ -647,9 +785,9 @@
                                     {isPaused ? '▶️ Retomar Pedidos' : '⏸️ Pausar Pedidos'}
                                 </button>
 
-                                {/* Botão Liga/Desliga Pular Automático (5 min) */}
+                                {/* Botão Liga/Desliga Pular Automático sincronizado no Firebase */}
                                 <button 
-                                    onClick={() => setAutoSkipEnabled(!autoSkipEnabled)}
+                                    onClick={handleToggleAutoSkip}
                                     className={`${autoSkipEnabled ? 'bg-emerald-500 text-zinc-950 font-black' : 'bg-zinc-800 text-zinc-400 border border-zinc-700 font-medium'} px-4 py-3 rounded-xl transition-all text-xs flex items-center gap-2`}
                                 >
                                     <span>⏱️ Pular Automático (5 min):</span>
@@ -663,11 +801,52 @@
                                     🗑️ Zerar Notas e Histórico
                                 </button>
                             </div>
+
+                            {/* Seção Nova: Adicionar Música Aleatória/Ambiente de Fundo */}
+                            <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl">
+                                <h4 className="text-zinc-200 text-sm font-bold mb-2 flex items-center gap-2">
+                                    🎵 Música Aleatória / Fundo para evitar Silêncio
+                                </h4>
+                                <p className="text-xs text-zinc-400 mb-3">
+                                    Cole o link do YouTube abaixo. Caso a fila esteja vazia, essa música tocará no telão. Assim que chegar um pedido novo, ela será substituída automaticamente pela música do cliente!
+                                </p>
+                                <form onSubmit={handlePlayBackgroundSong} className="flex flex-col sm:flex-row gap-2">
+                                    <input 
+                                        type="text"
+                                        placeholder="Cole o link do YouTube da música de fundo..."
+                                        value={backgroundLinkInput}
+                                        onChange={(e) => setBackgroundLinkInput(e.target.value)}
+                                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                                    />
+                                    <div className="flex gap-2 justify-end">
+                                        <button 
+                                            type="submit"
+                                            className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-xs px-4 py-2 rounded-xl transition-all"
+                                        >
+                                            ▶️ Tocar Música de Fundo
+                                        </button>
+                                        {backgroundSongActive && (
+                                            <button 
+                                                type="button"
+                                                onClick={handleStopBackgroundSong}
+                                                className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 font-semibold text-xs px-3 py-2 rounded-xl transition-all"
+                                            >
+                                                ⏹️ Parar Fundo
+                                            </button>
+                                        )}
+                                    </div>
+                                </form>
+                                {backgroundSongActive && (
+                                    <div className="mt-2 text-xs text-emerald-400 font-semibold flex items-center gap-1.5">
+                                        <span>🟢 Música de fundo ativa no telão no momento.</span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        {/* Formulário para Pedir Música Simples */}
+                        {/* Formulário para Pedir Música com Link Opcional */}
                         <div className="md:col-span-1">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sticky top-6">
                                 <h3 className="text-lg font-bold text-zinc-100 mb-4">Pedir Música</h3>
@@ -694,6 +873,16 @@
                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
                                         />
                                     </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Link do YouTube <span className="text-zinc-500">(Opcional)</span></label>
+                                        <input 
+                                            type="text" 
+                                            value={songYoutubeLink}
+                                            onChange={(e) => setSongYoutubeLink(e.target.value)}
+                                            placeholder="Cole o link se tiver..."
+                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
+                                        />
+                                    </div>
                                     <button 
                                         type="submit"
                                         className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 text-sm"
@@ -714,7 +903,7 @@
 
                                 {queue.length === 0 ? (
                                     <div className="text-center py-8 text-zinc-500 text-sm border border-dashed border-zinc-800 rounded-xl">
-                                        Nenhuma música na fila no momento. Peça a primeira!
+                                        Nenhuma música na fila no momento. Peça a primeira ou ative a música de fundo!
                                     </div>
                                 ) : (
                                     <div className="space-y-4">
@@ -952,7 +1141,7 @@
                                             onClick={() => setEditingSong(null)}
                                             className="w-1/2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium py-3 rounded-xl transition-colors text-sm"
                                         >
-                                            Cancelar
+                                            Cancelar`
                                         </button>
                                         <button 
                                             type="submit"
