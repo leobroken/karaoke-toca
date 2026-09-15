@@ -115,9 +115,7 @@
             const [youtubeInputs, setYoutubeInputs] = useState({});
             const [autoSkipEnabled, setAutoSkipEnabled] = useState(false);
 
-            // Gerenciamento de Usuários e Silenciados
             const [usersList, setUsersList] = useState([]);
-            const [mutedUsers, setMutedUsers] = useState({});
             const [showUsersModal, setShowUsersModal] = useState(false);
             const [isUserMuted, setIsUserMuted] = useState(false);
 
@@ -212,7 +210,6 @@
                     }
                 });
 
-                // Monitorar usuários cadastrados e silenciados
                 const unsubUsers = db.collection('users').orderBy('lastLogin', 'desc').onSnapshot(snapshot => {
                     const uList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setUsersList(uList);
@@ -227,12 +224,6 @@
                     }
                 });
 
-                const unsubMuted = db.collection('settings').doc('mutedUsers').onSnapshot(doc => {
-                    if (doc.exists) {
-                        setMutedUsers(doc.data() || {});
-                    }
-                });
-
                 return () => {
                     unsubQueue();
                     unsubHistory();
@@ -242,7 +233,6 @@
                     unsubAutoSkip();
                     unsubBg();
                     unsubUsers();
-                    unsubMuted();
                 };
             }, [activePlayingSong, user]);
 
@@ -354,7 +344,6 @@
                 setUser(userData);
                 localStorage.setItem('toca_karaoke_user', JSON.stringify(userData));
 
-                // Salvar ou atualizar usuário no Firestore para a lista do Admin
                 try {
                     await db.collection('users').doc(phoneFormatted).set({
                         name: nameFormatted,
@@ -376,8 +365,7 @@
                 }
             };
 
-            // Função do Administrador para Silenciar / Reativar Usuário
-            const handleToggleMuteUser = async (userId, phone, currentMutedStatus) => {
+            const handleToggleMuteUser = async (userId, currentMutedStatus) => {
                 const newStatus = !currentMutedStatus;
                 try {
                     await db.collection('users').doc(userId).update({
@@ -573,8 +561,15 @@
                 await db.collection('settings').doc('status').set({ paused: newStatus });
             };
 
+            // Função para abrir o telão forçando o modo PWA tela cheia sem barras amarelas
             const openTelaoWindow = () => {
-                window.open(window.location.pathname + '?telao=true', '_blank');
+                const telaoUrl = window.location.origin + window.location.pathname + '?telao=true';
+                
+                // Tenta abrir em uma nova janela sem barras de navegação (se suportado pelo navegador)
+                const newWindow = window.open(telaoUrl, '_blank', 'noopener,noreferrer');
+                if (!newWindow) {
+                    window.location.href = telaoUrl;
+                }
             };
 
             const handleRate = async (historyId, stars) => {
@@ -730,7 +725,6 @@
                         <img src="banner.jpg" alt="Toca do Guerreiro Karaokê" className="w-full h-full object-cover object-center" />
                     </div>
 
-                    {/* Aviso se o usuário estiver silenciado */}
                     {isUserMuted && (
                         <div className="bg-red-500/20 border border-red-500/40 text-red-300 p-4 rounded-2xl mb-6 text-center font-bold text-sm animate-pulse">
                             🔇 Você foi silenciado temporariamente pelo administrador e não pode pedir músicas.
@@ -797,6 +791,7 @@
                         </div>
                     </header>
 
+                    {/* Painel do Admin (Botão de Telão exclusivo para administradores) */}
                     {isAdmin && (
                         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 mb-8 space-y-5">
                             <h3 className="text-amber-400 font-bold text-lg flex items-center gap-2">
@@ -1069,7 +1064,6 @@
                         </div>
                     </div>
 
-                    {/* Modal de Lista de Usuários Conectados (Admin) */}
                     {showUsersModal && (
                         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[85vh] flex flex-col">
@@ -1102,7 +1096,7 @@
                                                     <p className="text-xs text-zinc-400 font-mono mt-0.5">📞 {u.phone}</p>
                                                 </div>
                                                 <button 
-                                                    onClick={() => handleToggleMuteUser(u.id, u.phone, u.muted)}
+                                                    onClick={() => handleToggleMuteUser(u.id, u.muted)}
                                                     className={`text-xs font-bold px-4 py-2 rounded-xl transition-all shrink-0 ${u.muted ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950' : 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40'}`}
                                                 >
                                                     {u.muted ? '🔊 Reativar' : '🔇 Silenciar'}
