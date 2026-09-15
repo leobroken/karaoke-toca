@@ -244,9 +244,10 @@
 
                 if (introTimerRef.current) clearInterval(introTimerRef.current);
 
-                setIntroCountdown({ song, count: 3 });
+                // Alterado de 3 para 10 segundos
+                setIntroCountdown({ song, count: 10 });
 
-                let currentCount = 3;
+                let currentCount = 10;
                 introTimerRef.current = setInterval(() => {
                     currentCount -= 1;
                     if (currentCount > 0) {
@@ -561,11 +562,8 @@
                 await db.collection('settings').doc('status').set({ paused: newStatus });
             };
 
-            // Função para abrir o telão forçando o modo PWA tela cheia sem barras amarelas
             const openTelaoWindow = () => {
                 const telaoUrl = window.location.origin + window.location.pathname + '?telao=true';
-                
-                // Tenta abrir em uma nova janela sem barras de navegação (se suportado pelo navegador)
                 const newWindow = window.open(telaoUrl, '_blank', 'noopener,noreferrer');
                 if (!newWindow) {
                     window.location.href = telaoUrl;
@@ -791,7 +789,6 @@
                         </div>
                     </header>
 
-                    {/* Painel do Admin (Botão de Telão exclusivo para administradores) */}
                     {isAdmin && (
                         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 mb-8 space-y-5">
                             <h3 className="text-amber-400 font-bold text-lg flex items-center gap-2">
