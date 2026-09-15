@@ -204,11 +204,11 @@
                 }
             };
 
-            // Disparar a música selecionada para tocar no Telão
+            // Disparar a música para abrir o YouTube otimizado direto na tela do Telão
             const handlePlayOnTelao = async (song) => {
                 try {
                     await db.collection('settings').doc('activePlaying').set({ song: song });
-                    alert(`"${song.title}" enviada para o telão! 🎬`);
+                    alert(`"${song.title}" disparada para o telão! 🎬`);
                 } catch (error) {
                     console.error("Erro ao reproduzir no telão: ", error);
                 }
@@ -289,10 +289,10 @@
             const topSinger = rankedHistory.length > 0 && rankedHistory[0].avgRating > 0 ? rankedHistory[0] : null;
 
             // ==========================================
-            // TELA DO MODO TELÃO (Com Disparo Direto do Admin)
+            // TELA DO MODO TELÃO (Com Disparo Limpo em Tela Cheia)
             // ==========================================
             if (isTelaoMode) {
-                const searchUrl = activePlayingSong ? `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(activePlayingSong.title + " " + activePlayingSong.artist + " karaoke")}&autoplay=1` : '';
+                const searchUrl = activePlayingSong ? `https://www.youtube.com/results?search_query=${encodeURIComponent(activePlayingSong.title + " " + activePlayingSong.artist + " karaoke")}&autoplay=1` : '';
 
                 return (
                     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none">
@@ -309,13 +309,22 @@
 
                         <div className="w-full max-w-5xl aspect-video bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center relative">
                             {activePlayingSong ? (
-                                <iframe 
-                                    className="w-full h-full border-0"
-                                    src={searchUrl}
-                                    title="Karaokê Player"
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                    allowFullScreen
-                                ></iframe>
+                                <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center bg-zinc-950">
+                                    <span className="text-amber-400 font-bold uppercase tracking-widest text-sm mb-2">Apresentação ao Vivo</span>
+                                    <h1 className="text-4xl font-black text-zinc-100 mb-2">{activePlayingSong.user}</h1>
+                                    <div className="bg-zinc-900 border border-zinc-800 px-8 py-4 rounded-2xl my-4">
+                                        <p className="text-3xl font-extrabold text-amber-500">{activePlayingSong.title}</p>
+                                        <p className="text-lg text-zinc-400 mt-1">{activePlayingSong.artist}</p>
+                                    </div>
+                                    <a 
+                                        href={searchUrl} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-black text-lg px-8 py-4 rounded-xl shadow-2xl shadow-amber-500/30 transition-all transform hover:scale-105 flex items-center gap-2 mt-4"
+                                    >
+                                        <span>▶️ ABRIR VÍDEO DO KARAOKÊ EM TELA CHEIA</span>
+                                    </a>
+                                </div>
                             ) : (
                                 <div className="text-center p-8">
                                     <h2 className="text-3xl font-extrabold text-amber-500 mb-2">Aguardando Próxima Música...</h2>
