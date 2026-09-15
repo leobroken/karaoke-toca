@@ -225,7 +225,6 @@
 
                 if (introTimerRef.current) clearInterval(introTimerRef.current);
 
-                // Contagem regressiva ajustada para 5 segundos
                 setIntroCountdown({ song, count: 5 });
 
                 let currentCount = 5;
@@ -337,6 +336,15 @@
             };
 
             const userActiveSongsCount = user ? queue.filter(item => item.phone === user.phone).length : 0;
+
+            const handleSearchYouTube = () => {
+                if (!songTitle.trim()) {
+                    alert('Digite o nome da música primeiro para buscar no YouTube!');
+                    return;
+                }
+                const query = encodeURIComponent(`${songTitle} ${songArtist} karaoke`);
+                window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank');
+            };
 
             const handleAddSong = async (e) => {
                 e.preventDefault();
@@ -845,12 +853,21 @@
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Link do YouTube <span className="text-zinc-500">(Opcional)</span></label>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <label className="text-xs font-medium text-zinc-400">Link do YouTube <span className="text-zinc-500">(Opcional)</span></label>
+                                            <button 
+                                                type="button"
+                                                onClick={handleSearchYouTube}
+                                                className="text-[11px] text-amber-400 hover:text-amber-300 font-bold underline flex items-center gap-1"
+                                            >
+                                                🔍 Buscar no YouTube
+                                            </button>
+                                        </div>
                                         <input 
                                             type="text" 
                                             value={songYoutubeLink}
                                             onChange={(e) => setSongYoutubeLink(e.target.value)}
-                                            placeholder="Cole o link se tiver..."
+                                            placeholder="Cole o link do karaokê aqui..."
                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
                                         />
                                     </div>
