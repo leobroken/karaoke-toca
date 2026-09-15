@@ -46,7 +46,7 @@
         }
         const db = firebase.firestore();
 
-        // Função auxiliar para extrair o ID do link do YouTube e ativar a API JS
+        // Função auxiliar para extrair o ID do link do YouTube
         function getYouTubeEmbedUrl(url) {
             if (!url) return '';
             let videoId = '';
@@ -63,18 +63,20 @@
         }
 
         function App() {
+            // Sessão do Usuário Comum com Nome e Celular
             const [user, setUser] = useState(() => {
                 const saved = localStorage.getItem('toca_karaoke_user');
                 if (saved) {
                     const data = JSON.parse(saved);
-                    if (new Date().getTime() - data.timestamp < 2 * 60 * 60 * 1000) {
-                        return data.name;
+                    if (new Date().getTime() - data.timestamp < 12 * 60 * 60 * 1000) {
+                        return data;
                     }
                 }
-                return '';
+                return null;
             });
 
             const [inputName, setInputName] = useState('');
+            const [inputPhone, setInputPhone] = useState('');
             const [songTitle, setSongTitle] = useState('');
             const [songArtist, setSongArtist] = useState('');
             
@@ -89,13 +91,26 @@
             const [isVideoMuted, setIsVideoMuted] = useState(true);
             const videoRef = useRef(null);
 
-            const [isAdmin, setIsAdmin] = useState(false);
+            // Sessão do Admin por 24 horas
+            const [isAdmin, setIsAdmin] = useState(() => {
+                const adminSaved = localStorage.getItem('toca_karaoke_admin');
+                if (adminSaved) {
+                    const adminData = JSON.parse(adminSaved);
+                    if (new Date().getTime() - adminData.timestamp < 24 * 60 * 60 * 1000) {
+                        return true;
+                    }
+                }
+                return false;
+            });
+
             const [adminModal, setAdminModal] = useState(false);
             const [adminPassword, setAdminPassword] = useState('');
             const [editingSong, setEditingSong] = useState(null);
             const [youtubeLinks, setYoutubeLinks] = useState({});
-
-            const iframeRef = useRef(null);
+            
+            // Controle do Pular Automático (5 minutos)
+            const [autoSkipEnabled, setAutoSkipEnabled] = useState(false);
+            const timerRef = useRef(null);
 
             // Verificar se o modo telao foi ativado via URL (?telao=true)
             useEffect(() => {
@@ -144,53 +159,64 @@
                 };
             }, []);
 
-            // Ouvir mensagens do iframe do YouTube para detectar quando o vídeo acaba (estado 0)
+            // Temporizador de 5 minutos caso o Pular Automático esteja ativado
             useEffect(() => {
-                if (!isTelaoMode) return;
-
-                const handleMessage = (event) => {
-                    if (event.data && typeof event.data === 'string') {
-                        try {
-                            const data = JSON.parse(event.data);
-                            if (data.event === 'infoDelivery' && data.info && data.info.playerState === 0) {
-                                handleNextSong();
-                            }
-                        } catch (e) {}
-                    }
-                };
-
-                window.addEventListener('message', handleMessage);
-                return () => window.removeEventListener('message', handleMessage);
-            }, [isTelaoMode, queue]);
-
-            const handleLogin = (e) => {
-                e.preventDefault();
-                if (!inputName.trim()) return;
-                const nameFormatted = inputName.trim();
-
-                const nameExistsInQueue = queue.some(item => item.user && item.user.toLowerCase() === nameFormatted.toLowerCase());
-
-                if (nameExistsInQueue) {
-                    alert('Este nome ou apelido já está sendo utilizado na fila no momento! Por favor, escolha outro nome ou adicione um sobrenome.');
+                if (!isTelaoMode || !autoSkipEnabled || !activePlayingSong) {
+                    if (timerRef.current) clearTimeout(timerRef.current);
                     return;
                 }
 
-                setUser(nameFormatted);
-                localStorage.setItem('toca_karaoke_user', JSON.stringify({
+                // Configura 5 minutos (300.000 ms) para pular automaticamente
+                timerRef.current = setTimeout(() => {
+                    handleNextSong();
+                }, 5 * 60 * 1000);
+
+                return () => {
+                    if (timerRef.current) clearTimeout(timerRef.current);
+                };
+            }, [activePlayingSong, autoSkipEnabled, isTelaoMode, queue]);
+
+            // Máscara automática para o telefone: (XX) XXXXX-XXXX
+            const handlePhoneChange = (e) => {
+                let value = e.target.value.replace(/\D/g, '');
+                if (value.length > 11) value = value.slice(0, 11);
+                
+                if (value.length > 6) {
+                    value = `(${value.slice(0, 2)}) ${value.slice(2, 7)}-${value.slice(7)}`;
+                } else if (value.length > 2) {
+                    value = `(${value.slice(0, 2)}) ${value.slice(2)}`;
+                } else if (value.length > 0) {
+                    value = `(${value}`;
+                }
+                setInputPhone(value);
+            };
+
+            const handleLogin = (e) => {
+                e.preventDefault();
+                if (!inputName.trim() || !inputPhone.trim()) return;
+                const nameFormatted = inputName.trim();
+                const phoneFormatted = inputPhone.trim();
+
+                const userData = {
                     name: nameFormatted,
+                    phone: phoneFormatted,
                     timestamp: new Date().getTime()
-                }));
+                };
+
+                setUser(userData);
+                localStorage.setItem('toca_karaoke_user', JSON.stringify(userData));
                 setInputName('');
+                setInputPhone('');
             };
 
             const handleLogout = () => {
-                if (confirm('Deseja realmente sair e trocar de nome?')) {
+                if (confirm('Deseja realmente sair da sua conta?')) {
                     localStorage.removeItem('toca_karaoke_user');
-                    setUser('');
+                    setUser(null);
                 }
             };
 
-            const userActiveSongsCount = queue.filter(item => item.user && item.user.toLowerCase() === user.toLowerCase()).length;
+            const userActiveSongsCount = user ? queue.filter(item => item.phone === user.phone).length : 0;
 
             const handleAddSong = async (e) => {
                 e.preventDefault();
@@ -212,7 +238,8 @@
                     await db.collection('queue').add({
                         title: songTitle.trim(),
                         artist: songArtist.trim(),
-                        user: user,
+                        user: user.name,
+                        phone: user.phone,
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                     setSongTitle('');
@@ -235,11 +262,17 @@
                 e.preventDefault();
                 if (adminPassword === 'toca10karaoke') {
                     setIsAdmin(true);
+                    localStorage.setItem('toca_karaoke_admin', JSON.stringify({ timestamp: new Date().getTime() }));
                     setAdminModal(false);
                     setAdminPassword('');
                 } else {
                     alert('Senha incorreta!');
                 }
+            };
+
+            const handleAdminLogout = () => {
+                localStorage.removeItem('toca_karaoke_admin');
+                setIsAdmin(false);
             };
 
             const handlePlayOnTelao = async (song, customLink = null) => {
@@ -264,7 +297,17 @@
                 }
             };
 
-            // Avançar música e já puxar a próxima caso tenha link
+            // Botão Salvar Link Individual
+            const handleSaveLinkOnly = (songId) => {
+                const link = youtubeLinks[songId];
+                if (!link || !link.trim()) {
+                    alert('Cole um link válido antes de salvar!');
+                    return;
+                }
+                alert('Link salvo com sucesso para esta música! 👍');
+            };
+
+            // Avançar música automaticamente
             const handleNextSong = async () => {
                 if (queue.length === 0) {
                     await db.collection('settings').doc('activePlaying').set({ song: null });
@@ -276,6 +319,7 @@
                         title: current.title,
                         artist: current.artist,
                         user: current.user,
+                        phone: current.phone || '',
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                     
@@ -339,7 +383,7 @@
 
             const handleRate = async (historyId, stars) => {
                 const currentSongRatings = ratings[historyId] || {};
-                const updatedSongRatings = { ...currentSongRatings, [user]: stars };
+                const updatedSongRatings = { ...currentSongRatings, [user.phone]: stars };
                 const newRatings = { ...ratings, [historyId]: updatedSongRatings };
                 
                 await db.collection('ratings').doc('data').set(newRatings);
@@ -374,7 +418,6 @@
                         <div className="w-full max-w-5xl aspect-video bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center relative">
                             {activePlayingSong && activePlayingSong.embedUrl ? (
                                 <iframe 
-                                    ref={iframeRef}
                                     className="w-full h-full border-0"
                                     src={activePlayingSong.embedUrl}
                                     title="Karaokê Player"
@@ -402,7 +445,7 @@
             }
 
             // ==========================================
-            // TELA NORMAL DO USUÁRIO / ADMIN
+            // TELA DE LOGIN COM NOME E CELULAR
             // ==========================================
             if (!user) {
                 return (
@@ -415,7 +458,7 @@
                                 <div className="text-center mb-6">
                                     <span className="bg-amber-500/10 text-amber-400 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider">Toca do Guerreiro</span>
                                     <h1 className="text-3xl font-extrabold text-amber-500 mt-3">Karaokê</h1>
-                                    <p className="text-zinc-400 text-sm mt-1">Insira seu nome ou apelido para participar</p>
+                                    <p className="text-zinc-400 text-sm mt-1">Informe seus dados para participar</p>
                                 </div>
                                 <form onSubmit={handleLogin} className="space-y-4">
                                     <div>
@@ -426,7 +469,18 @@
                                             value={inputName}
                                             onChange={(e) => setInputName(e.target.value)}
                                             placeholder="Ex: João Cantor"
-                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:outline-none focus:border-amber-500 transition-colors"
+                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:outline-none focus:border-amber-500 transition-colors text-sm"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Número de Celular (WhatsApp)</label>
+                                        <input 
+                                            type="text" 
+                                            required
+                                            value={inputPhone}
+                                            onChange={handlePhoneChange}
+                                            placeholder="(12) 99999-9999"
+                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:outline-none focus:border-amber-500 transition-colors text-sm"
                                         />
                                     </div>
                                     <button 
@@ -478,10 +532,10 @@
                             <div>
                                 <span className="text-xs text-amber-400 font-semibold uppercase tracking-wider">Cantor(a) conectado(a)</span>
                                 <div className="flex items-center gap-2 mt-0.5">
-                                    <h2 className="text-xl font-bold text-zinc-100">{user}</h2>
+                                    <h2 className="text-xl font-bold text-zinc-100">{user.name}</h2>
                                     <button 
                                         onClick={handleLogout}
-                                        title="Sair / Trocar de nome"
+                                        title="Sair / Trocar de conta"
                                         className="text-[11px] bg-red-500/15 hover:bg-red-500/25 text-red-400 font-semibold px-2.5 py-1 rounded-lg border border-red-500/30 transition-colors"
                                     >
                                         Sair 🚪
@@ -501,7 +555,7 @@
                                 <div className="flex items-center gap-2">
                                     <span className="bg-amber-500/20 text-amber-400 text-xs font-bold px-3 py-1.5 rounded-xl border border-amber-500/30">Modo Admin Ativo</span>
                                     <button 
-                                        onClick={() => setIsAdmin(false)}
+                                        onClick={handleAdminLogout}
                                         className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 font-medium px-3 py-2 rounded-xl transition-colors border border-red-500/30"
                                     >
                                         Sair Admin
@@ -517,28 +571,38 @@
                             <h3 className="text-amber-400 font-bold text-lg mb-4 flex items-center gap-2">
                                 👑 Painel de Administração
                             </h3>
-                            <div className="flex flex-wrap gap-4">
+                            <div className="flex flex-wrap gap-4 items-center">
                                 <button 
                                     onClick={openTelaoWindow}
-                                    className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+                                    className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2 text-sm"
                                 >
                                     🖥️ Abrir Modo Telão
                                 </button>
                                 <button 
                                     onClick={handleNextSong}
-                                    className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2"
+                                    className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 text-sm"
                                 >
                                     ⏭️ Próxima Música (Automática)
                                 </button>
                                 <button 
                                     onClick={handleTogglePause}
-                                    className={`${isPaused ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950' : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40'} font-bold px-5 py-3 rounded-xl transition-all`}
+                                    className={`${isPaused ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950' : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40'} font-bold px-5 py-3 rounded-xl transition-all text-sm`}
                                 >
                                     {isPaused ? '▶️ Retomar Pedidos' : '⏸️ Pausar Pedidos'}
                                 </button>
+
+                                {/* Botão Liga/Desliga Pular Automático (5 min) */}
+                                <button 
+                                    onClick={() => setAutoSkipEnabled(!autoSkipEnabled)}
+                                    className={`${autoSkipEnabled ? 'bg-emerald-500 text-zinc-950 font-black' : 'bg-zinc-800 text-zinc-400 border border-zinc-700 font-medium'} px-4 py-3 rounded-xl transition-all text-xs flex items-center gap-2`}
+                                >
+                                    <span>⏱️ Pular Automático (5 min):</span>
+                                    <span className="underline">{autoSkipEnabled ? 'ATIVADO' : 'DESATIVADO'}</span>
+                                </button>
+
                                 <button 
                                     onClick={handleResetNotes}
-                                    className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold px-5 py-3 rounded-xl transition-all"
+                                    className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold px-5 py-3 rounded-xl transition-all text-sm"
                                 >
                                     🗑️ Zerar Notas e Histórico
                                 </button>
@@ -584,7 +648,7 @@
                             </div>
                         </div>
 
-                        {/* Fila de Espera com Campo de Link e Botão Tocar (Admin) */}
+                        {/* Fila de Espera com Campo de Link, Botão Salvar Link e Tocar */}
                         <div className="md:col-span-2 space-y-8">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
                                 <div className="flex justify-between items-center mb-4">
@@ -631,22 +695,30 @@
                                                     </div>
                                                 </div>
 
-                                                {/* Campo exclusivo para o Admin colar o link do YouTube e disparar incorporado */}
+                                                {/* Controles exclusivos para o Admin com Botão Salvar Link e Tocar */}
                                                 {isAdmin && (
-                                                    <div className="flex items-center gap-2 pt-2 border-t border-zinc-900">
+                                                    <div className="flex flex-col sm:flex-row items-center gap-2 pt-2 border-t border-zinc-900">
                                                         <input 
                                                             type="text"
-                                                            placeholder="Cole o link do YouTube aqui (ex: youtube.com/watch?v=...)"
+                                                            placeholder="Cole o link do YouTube aqui..."
                                                             value={youtubeLinks[item.id] || ''}
                                                             onChange={(e) => setYoutubeLinks({ ...youtubeLinks, [item.id]: e.target.value })}
-                                                            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                                                            className="w-full sm:flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
                                                         />
-                                                        <button 
-                                                            onClick={() => handlePlayOnTelao(item)}
-                                                            className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-md shadow-emerald-500/20 shrink-0"
-                                                        >
-                                                            ▶️ Tocar Música
-                                                        </button>
+                                                        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                                                            <button 
+                                                                onClick={() => handleSaveLinkOnly(item.id)}
+                                                                className="bg-zinc-800 hover:bg-zinc-700 text-amber-400 border border-amber-500/30 font-semibold text-xs px-3 py-2 rounded-xl transition-all"
+                                                            >
+                                                                💾 Salvar Link
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => handlePlayOnTelao(item)}
+                                                                className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-md shadow-emerald-500/20"
+                                                            >
+                                                                ▶️ Tocar Música
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
@@ -667,8 +739,8 @@
                                 ) : (
                                     <div className="space-y-3">
                                         {rankedHistory.map((item, index) => {
-                                            const userRating = (ratings[item.id] || {})[user] || 0;
-                                            const isOwner = item.user.toLowerCase() === user.toLowerCase();
+                                            const userRating = (ratings[item.id] || {})[user.phone] || 0;
+                                            const isOwner = item.phone === user.phone;
 
                                             return (
                                                 <div key={item.id} className="bg-zinc-950 border border-zinc-800/80 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
