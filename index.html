@@ -157,6 +157,7 @@
                             song: { ...nextSong, id: nextSong.id, embedUrl: embedUrl } 
                         });
                     } else {
+                        // Se a próxima música não tiver link, o telão fica limpo em vez de puxar lixo
                         await db.collection('settings').doc('activePlaying').set({ song: null });
                     }
                 } catch (error) {
@@ -259,20 +260,8 @@
                 }, 1000);
             };
 
-            useEffect(() => {
-                if (queue.length > 0 && backgroundSongActive) {
-                    const firstSong = queue[0];
-                    if (firstSong.youtubeLink) {
-                        const embedUrl = getYouTubeEmbedUrl(firstSong.youtubeLink);
-                        if (embedUrl) {
-                            db.collection('settings').doc('backgroundSong').set({ song: null });
-                            db.collection('settings').doc('activePlaying').set({ 
-                                song: { ...firstSong, id: firstSong.id, embedUrl: embedUrl } 
-                            });
-                        }
-                    }
-                }
-            }, [queue, backgroundSongActive]);
+            // Removido o useEffect automático que puxava o primeiro da fila sem autorização. 
+            // Agora o telão só toca se o admin clicar em "Tocar Música" ou se houver comando explícito.
 
             useEffect(() => {
                 if (!isTelaoMode || introCountdown) return;
@@ -409,24 +398,7 @@
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
 
-                    const docRef = await db.collection('queue').add(songData);
-                    
-                    // Verifica se o telão está livre (sem música tocando E sem música de fundo ativa)
-                    const activeDoc = await db.collection('settings').doc('activePlaying').get();
-                    const bgDoc = await db.collection('settings').doc('backgroundSong').get();
-                    
-                    const currentActive = activeDoc.exists ? activeDoc.data().song : null;
-                    const currentBg = bgDoc.exists ? bgDoc.data().song : null;
-
-                    if ((!currentActive || !currentActive.embedUrl) && !currentBg && songYoutubeLink.trim()) {
-                        const embedUrl = getYouTubeEmbedUrl(songYoutubeLink.trim());
-                        if (embedUrl) {
-                            await db.collection('settings').doc('backgroundSong').set({ song: null });
-                            await db.collection('settings').doc('activePlaying').set({ 
-                                song: { id: docRef.id, ...songData, embedUrl: embedUrl } 
-                            });
-                        }
-                    }
+                    await db.collection('queue').add(songData);
 
                     setSongTitle('');
                     setSongArtist('');
@@ -849,7 +821,7 @@
                                     🎵 Música Aleatória / Fundo para evitar Silêncio
                                 </h4>
                                 <p className="text-xs text-zinc-400 mb-3">
-                                    Cole o link do YouTube abaixo. Caso a fila esteja vazia, essa música tocará no telão. Assim que chegar um pedido novo, ela será substituída automaticamente pela música do cliente!
+                                    Cole o link do YouTube abaixo. Caso deseje som ambiente no telão, ative aqui.
                                 </p>
                                 <form onSubmit={handlePlayBackgroundSong} className="flex flex-col sm:flex-row gap-2">
                                     <input 
