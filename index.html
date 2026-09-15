@@ -46,7 +46,7 @@
         }
         const db = firebase.firestore();
 
-        // Função auxiliar para extrair o ID do link do YouTube
+        // Função auxiliar para extrair o ID do link do YouTube e ativar a API JS
         function getYouTubeEmbedUrl(url) {
             if (!url) return '';
             let videoId = '';
@@ -95,7 +95,6 @@
             const [editingSong, setEditingSong] = useState(null);
             const [youtubeLinks, setYoutubeLinks] = useState({});
 
-            // Referência para o Iframe do YouTube controlar o término do vídeo
             const iframeRef = useRef(null);
 
             // Verificar se o modo telao foi ativado via URL (?telao=true)
@@ -112,10 +111,6 @@
                     const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setQueue(items);
                 });
-
-                const unsubHistoryReal = db.collection('history').orderBy('desc', 'desc').onSnapshot(snapshot => {
-                    // Mantido simples
-                }, () => {});
 
                 const unsubHistory = db.collection('history').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
                     const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -149,7 +144,7 @@
                 };
             }, []);
 
-            // Otorresponder ao fim do vídeo do YouTube no Telão
+            // Ouvir mensagens do iframe do YouTube para detectar quando o vídeo acaba (estado 0)
             useEffect(() => {
                 if (!isTelaoMode) return;
 
@@ -157,7 +152,6 @@
                     if (event.data && typeof event.data === 'string') {
                         try {
                             const data = JSON.parse(event.data);
-                            // Estado 0 do player do YouTube significa que o vídeo acabou (ENDED)
                             if (data.event === 'infoDelivery' && data.info && data.info.playerState === 0) {
                                 handleNextSong();
                             }
@@ -248,7 +242,6 @@
                 }
             };
 
-            // Disparar a música enviando o link do YouTube informado pelo admin
             const handlePlayOnTelao = async (song, customLink = null) => {
                 const link = customLink || youtubeLinks[song.id] || '';
                 if (!link.trim()) {
@@ -271,16 +264,14 @@
                 }
             };
 
-            // Avançar para a próxima música e já tocar automaticamente se tiver link salvo/armazenado
+            // Avançar música e já puxar a próxima caso tenha link
             const handleNextSong = async () => {
                 if (queue.length === 0) {
                     await db.collection('settings').doc('activePlaying').set({ song: null });
-                    alert('A fila está vazia!');
                     return;
                 }
                 const current = queue[0];
                 try {
-                    // Adiciona ao histórico
                     await db.collection('history').add({
                         title: current.title,
                         artist: current.artist,
@@ -288,21 +279,17 @@
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                     
-                    // Remove da fila atual
                     await db.collection('queue').doc(current.id).delete();
 
-                    // Verifica se há uma próxima música na fila recém-atualizada
                     const nextSong = queue.length > 1 ? queue[1] : null;
                     if (nextSong) {
                         const nextLink = youtubeLinks[nextSong.id];
                         if (nextLink) {
-                            // Se a próxima música já tiver link digitado, já dispara ela automaticamente
                             const embedUrl = getYouTubeEmbedUrl(nextLink);
                             await db.collection('settings').doc('activePlaying').set({ 
                                 song: { ...nextSong, embedUrl: embedUrl } 
                             });
                         } else {
-                            // Se não tiver link, limpa o player do telão aguardando o admin colocar
                             await db.collection('settings').doc('activePlaying').set({ song: null });
                         }
                     } else {
@@ -368,7 +355,7 @@
             const topSinger = rankedHistory.length > 0 && rankedHistory[0].avgRating > 0 ? rankedHistory[0] : null;
 
             // ==========================================
-            // TELA DO MODO TELÃO (Automática no fim do vídeo)
+            // TELA DO MODO TELÃO
             // ==========================================
             if (isTelaoMode) {
                 return (
@@ -818,14 +805,14 @@
                                             required
                                             value={editingSong.title}
                                             onChange={(e) => setEditingSong({ ...editingSong, title: e.target.value })}
-                                           className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
+                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
                                         />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-zinc-400 mb-1">Artista / Banda</label>
                                         <input 
                                             type="text" 
-                               5             required
+                                            required
                                             value={editingSong.artist}
                                             onChange={(e) => setEditingSong({ ...editingSong, artist: e.target.value })}
                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
