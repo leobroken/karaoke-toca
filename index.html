@@ -135,7 +135,7 @@
                 e.preventDefault();
                 
                 if (isPaused) {
-                    setIsVideoMuted(true); // Inicializa mutado para garantir a abertura limpa
+                    setIsVideoMuted(true);
                     setShowPausedModal(true);
                     return;
                 }
@@ -161,7 +161,6 @@
                 }
             };
 
-            // Função para habilitar o som do vídeo manualmente com o clique do usuário
             const handleUnmuteVideo = () => {
                 if (videoRef.current) {
                     videoRef.current.muted = false;
@@ -248,6 +247,9 @@
                 return { ...item, avgRating: avg, totalVotes: values.length };
             }).sort((a, b) => b.avgRating - a.avgRating || b.totalVotes - a.totalVotes);
 
+            // Descobrir o melhor cantor da noite (1º lugar do ranking com pelo menos 1 voto ou média > 0)
+            const topSinger = rankedHistory.length > 0 && rankedHistory[0].avgRating > 0 ? rankedHistory[0] : null;
+
             if (!user) {
                 return (
                     <div className="flex flex-col items-center justify-center min-h-screen px-4 bg-gradient-to-b from-zinc-900 to-zinc-950 py-8">
@@ -289,8 +291,31 @@
             return (
                 <div className="max-w-4xl mx-auto px-4 py-8">
                     {/* Banner Oficial no Topo */}
-                    <div className="w-full h-48 sm:h-72 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl mb-8">
+                    <div className="w-full h-48 sm:h-72 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl mb-6">
                         <img src="banner.jpg" alt="Toca do Guerreiro Karaokê" className="w-full h-full object-cover object-center" />
+                    </div>
+
+                    {/* Destaque: Melhor Cantor da Noite */}
+                    <div className="bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-zinc-900 border border-amber-500/40 rounded-2xl p-4 sm:p-5 mb-6 flex items-center gap-4 shadow-xl shadow-amber-500/5">
+                        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-amber-500 text-zinc-950 flex items-center justify-center text-2xl font-black shrink-0 shadow-lg shadow-amber-500/30">
+                            👑
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <span className="text-[11px] font-bold text-amber-400 uppercase tracking-widest block">Destaque da Noite</span>
+                            {topSinger ? (
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mt-0.5">
+                                    <div>
+                                        <h3 className="text-lg sm:text-xl font-extrabold text-zinc-100 truncate">{topSinger.user}</h3>
+                                        <p className="text-xs text-zinc-400 truncate">{topSinger.title} - {topSinger.artist}</p>
+                                    </div>
+                                    <div className="self-start sm:self-auto bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold px-3 py-1 rounded-xl">
+                                        ★ {topSinger.avgRating.toFixed(1)} ({topSinger.totalVotes} votos)
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-zinc-400 mt-0.5">Ainda sem avaliações. Seja o primeiro a brilhar no topo!</p>
+                            )}
+                        </div>
                     </div>
 
                     {/* Header com dados do usuário e botão Sair */}
@@ -527,7 +552,6 @@
                                         Seu navegador não suporta vídeos.
                                     </video>
                                     
-                                    {/* Botão flutuante para ligar o som caso o celular bloqueie */}
                                     {isVideoMuted && (
                                         <button 
                                             type="button"
