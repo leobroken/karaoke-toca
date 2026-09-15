@@ -227,7 +227,6 @@
                         user: current.user,
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
-                    // Remove da fila e limpa o player ativo se for o atual
                     await db.collection('queue').doc(current.id).delete();
                     await db.collection('settings').doc('activePlaying').set({ song: null });
                 } catch (error) {
