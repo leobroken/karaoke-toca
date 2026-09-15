@@ -23,7 +23,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
         // Configuração do Firebase
         const firebaseConfig = {
@@ -62,6 +62,8 @@
             const [isPaused, setIsPaused] = useState(false);
             
             const [showPausedModal, setShowPausedModal] = useState(false);
+            const [isVideoMuted, setIsVideoMuted] = useState(true);
+            const videoRef = useRef(null);
 
             const [isAdmin, setIsAdmin] = useState(false);
             const [adminModal, setAdminModal] = useState(false);
@@ -133,6 +135,7 @@
                 e.preventDefault();
                 
                 if (isPaused) {
+                    setIsVideoMuted(true); // Inicializa mutado para garantir a abertura limpa
                     setShowPausedModal(true);
                     return;
                 }
@@ -155,6 +158,15 @@
                     setSongArtist('');
                 } catch (error) {
                     console.error("Erro ao adicionar música: ", error);
+                }
+            };
+
+            // Função para habilitar o som do vídeo manualmente com o clique do usuário
+            const handleUnmuteVideo = () => {
+                if (videoRef.current) {
+                    videoRef.current.muted = false;
+                    videoRef.current.play();
+                    setIsVideoMuted(false);
                 }
             };
 
@@ -498,32 +510,44 @@
                         </div>
                     </div>
 
-                    {/* Pop-up (Modal) com Vídeo Vertical Com Som Ativado */}
+                    {/* Pop-up (Modal) com Vídeo Vertical e Botão Dedicado de Ativar Som */}
                     {showPausedModal && (
                         <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
                             <div className="bg-zinc-900 border border-amber-500/50 rounded-2xl p-6 w-full max-w-xs sm:max-w-sm shadow-2xl shadow-amber-500/10 text-center">
-                                <div className="w-full aspect-[9/16] max-h-[60vh] rounded-xl overflow-hidden mb-4 border border-amber-500/30 bg-black mx-auto flex items-center justify-center">
+                                <div className="w-full aspect-[9/16] max-h-[50vh] rounded-xl overflow-hidden mb-3 border border-amber-500/30 bg-black mx-auto relative flex items-center justify-center">
                                     <video 
+                                        ref={videoRef}
                                         src="mensagem.mp4" 
                                         autoPlay 
                                         loop 
-                                        controls
+                                        muted={isVideoMuted}
                                         playsInline
                                         className="w-full h-full object-cover"
                                     >
                                         Seu navegador não suporta vídeos.
                                     </video>
+                                    
+                                    {/* Botão flutuante para ligar o som caso o celular bloqueie */}
+                                    {isVideoMuted && (
+                                        <button 
+                                            type="button"
+                                            onClick={handleUnmuteVideo}
+                                            className="absolute bottom-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold text-xs px-4 py-2 rounded-full shadow-lg flex items-center gap-1.5 animate-bounce transition-all"
+                                        >
+                                            🔊 Ligar Som do Vídeo
+                                        </button>
+                                    )}
                                 </div>
                                 <h3 className="text-xl font-extrabold text-amber-500 mb-1">Que pena que acabou!</h3>
-                                <p className="text-xs text-zinc-300 leading-relaxed mb-5">
+                                <p className="text-xs text-zinc-300 leading-relaxed mb-4">
                                     Os pedidos de músicas foram pausados pelo administrador. Obrigado a todos pela participação na Toca do Guerreiro!
                                 </p>
                                 <button 
                                     type="button"
                                     onClick={() => setShowPausedModal(false)}
-                                    className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold py-2.5 rounded-xl transition-colors text-sm shadow-lg shadow-amber-500/20"
+                                    className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold py-2.5 rounded-xl transition-colors text-sm border border-zinc-700"
                                 >
-                                    Entendido 👍
+                                    Fechar 👍
                                 </button>
                             </div>
                         </div>
