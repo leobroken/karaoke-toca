@@ -59,13 +59,14 @@
             });
 
             const [inputName, setInputName] = useState('');
-            const [songTitle, setSongTitle] = useState('');
-            const [songArtist, setSongArtist] = useState('');
+            const [searchTerm, setSearchTerm] = useState('');
+            const [selectedVideo, setSelectedVideo] = useState(null);
             
             const [queue, setQueue] = useState([]);
             const [history, setHistory] = useState([]);
             const [ratings, setRatings] = useState({});
             const [isPaused, setIsPaused] = useState(false);
+            const [isTelaoMode, setIsTelaoMode] = useState(false);
             
             const [showPausedModal, setShowPausedModal] = useState(false);
             const [isVideoMuted, setIsVideoMuted] = useState(true);
@@ -76,6 +77,14 @@
             const [adminPassword, setAdminPassword] = useState('');
             const [editingSong, setEditingSong] = useState(null);
 
+            // Verificar se o modo telao foi ativado via URL (?telao=true)
+            useEffect(() => {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('telao') === 'true') {
+                    setIsTelaoMode(true);
+                }
+            }, []);
+
             // Sincronização em tempo real com o Firestore
             useEffect(() => {
                 const unsubQueue = db.collection('queue').orderBy('createdAt', 'asc').onSnapshot(snapshot => {
@@ -83,7 +92,9 @@
                     setQueue(items);
                 });
 
-                const unsubHistory = db.collection('history').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+                const unsubHistory = db.collection('history').orderBy('desc', 'desc').onSnapshot(() => {}, () => {}); // Prevenção de erro em branco
+                
+                const unsubHistoryReal = db.collection('history').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
                     const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setHistory(items);
                 });
@@ -102,7 +113,7 @@
 
                 return () => {
                     unsubQueue();
-                    unsubHistory();
+                    unsubHistoryReal();
                     unsubRatings();
                     unsubSettings();
                 };
@@ -146,7 +157,7 @@
                     return;
                 }
 
-                if (!songTitle.trim() || !songArtist.trim()) return;
+                if (!searchTerm.trim()) return;
 
                 if (userActiveSongsCount >= 2) {
                     alert('Você já possui 2 músicas na fila! Aguarde uma delas tocar para pedir outra.');
@@ -155,13 +166,13 @@
 
                 try {
                     await db.collection('queue').add({
-                        title: songTitle.trim(),
-                        artist: songArtist.trim(),
+                        title: searchTerm.trim(),
+                        artist: 'Karaokê / YouTube',
                         user: user,
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
-                    setSongTitle('');
-                    setSongArtist('');
+                    setSearchTerm('');
+                    alert('Música adicionada à fila com sucesso! 🎤');
                 } catch (error) {
                     console.error("Erro ao adicionar música: ", error);
                 }
@@ -213,11 +224,10 @@
 
             const handleSaveEdit = async (e) => {
                 e.preventDefault();
-                if (!editingSong.title.trim() || !editingSong.artist.trim()) return;
+                if (!editingSong.title.trim()) return;
 
                 await db.collection('queue').doc(editingSong.id).update({
-                    title: editingSong.title.trim(),
-                    artist: editingSong.artist.trim()
+                    title: editingSong.title.trim()
                 });
                 setEditingSong(null);
             };
@@ -238,6 +248,10 @@
                 await db.collection('settings').doc('status').set({ paused: newStatus });
             };
 
+            const openTelaoWindow = () => {
+                window.open(window.location.pathname + '?telao=true', '_blank');
+            };
+
             const handleRate = async (historyId, stars) => {
                 const currentSongRatings = ratings[historyId] || {};
                 const updatedSongRatings = { ...currentSongRatings, [user]: stars };
@@ -255,6 +269,59 @@
 
             const topSinger = rankedHistory.length > 0 && rankedHistory[0].avgRating > 0 ? rankedHistory[0] : null;
 
+            // ==========================================
+            // TELA DO MODO TELÃO (Para abrir no TV Box)
+            // ==========================================
+            if (isTelaoMode) {
+                const currentPlaying = queue.length > 0 ? queue[0] : null;
+                // Geradores de busca inteligente para rodar no player embutido ou redirecionador
+                const searchQuery = currentPlaying ? encodeURIComponent(currentPlaying.title + " karaoke") : "";
+
+                return (
+                    <div className="fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none">
+                        <div className="absolute top-4 left-6 flex items-center gap-3">
+                            <span className="bg-amber-500 text-zinc-950 font-black px-4 py-1.5 rounded-xl text-sm shadow-lg shadow-amber-500/20 uppercase tracking-wider">
+                                🖥️ Telão Toca do Guerreiro
+                            </span>
+                            {currentPlaying && (
+                                <span className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-4 py-1.5 rounded-xl text-sm font-bold">
+                                    Cantando agora: <span className="text-amber-400">{currentPlaying.user}</span> — {currentPlaying.title}
+                                </span>
+                            )}
+                        </div>
+
+                        <div className="w-full max-w-5xl aspect-video bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center relative">
+                            {currentPlaying ? (
+                                <iframe 
+                                    className="w-full h-full"
+                                    src={`https://www.youtube.com/embed?listType=search&list=${searchQuery}&autoplay=1`}
+                                    title="YouTube Karaoke Player"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                ></iframe>
+                            ) : (
+                                <div className="text-center p-8">
+                                    <h2 className="text-3xl font-extrabold text-amber-500 mb-2">Fila de Karaokê Vazia!</h2>
+                                    <p className="text-zinc-400 text-base">Peça sua música pelo celular para começar a festa na Toca do Guerreiro 🎤</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="absolute bottom-4 right-6">
+                            <button 
+                                onClick={handleNextSong}
+                                className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-6 py-3 rounded-xl shadow-lg transition-all text-sm"
+                            >
+                                ⏭️ Pular para Próxima Música
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            // ==========================================
+            // TELA NORMAL DO USUÁRIO / ADMIN
+            // ==========================================
             if (!user) {
                 return (
                     <div className="flex flex-col items-center justify-center min-h-screen px-4 bg-gradient-to-b from-zinc-900 to-zinc-950 py-8">
@@ -311,7 +378,7 @@
                                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mt-0.5">
                                     <div>
                                         <h3 className="text-lg sm:text-xl font-extrabold text-zinc-100 truncate">{topSinger.user}</h3>
-                                        <p className="text-xs text-zinc-400 truncate">{topSinger.title} - {topSinger.artist}</p>
+                                        <p className="text-xs text-zinc-400 truncate">{topSinger.title}</p>
                                     </div>
                                     <div className="self-start sm:self-auto bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold px-3 py-1 rounded-xl">
                                         ★ {topSinger.avgRating.toFixed(1)} ({topSinger.totalVotes} votos)
@@ -370,6 +437,12 @@
                             </h3>
                             <div className="flex flex-wrap gap-4">
                                 <button 
+                                    onClick={openTelaoWindow}
+                                    className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+                                >
+                                    🖥️ Abrir Modo Telão
+                                </button>
+                                <button 
                                     onClick={handleNextSong}
                                     className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2"
                                 >
@@ -392,42 +465,32 @@
                     )}
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        {/* Formulário para Pedir Música */}
+                        {/* Formulário para Pedir Música com Busca do YouTube */}
                         <div className="md:col-span-1">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sticky top-6">
-                                <h3 className="text-lg font-bold text-zinc-100 mb-4">Pedir Música</h3>
+                                <h3 className="text-lg font-bold text-zinc-100 mb-2">Pedir Música</h3>
+                                <p className="text-xs text-zinc-400 mb-4">Digite o nome da música e artista para buscar no YouTube</p>
                                 <form onSubmit={handleAddSong} className="space-y-4">
                                     <div>
-                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Música</label>
+                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Música / Artista (YouTube)</label>
                                         <input 
                                             type="text" 
                                             required
-                                            value={songTitle}
-                                            onChange={(e) => setSongTitle(e.target.value)}
-                                            placeholder="Ex: Evidências"
-                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Artista / Banda</label>
-                                        <input 
-                                            type="text" 
-                                            required
-                                            value={songArtist}
-                                            onChange={(e) => setSongArtist(e.target.value)}
-                                            placeholder="Ex: Chitãozinho & Xororó"
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            placeholder="Ex: Evidências Chitãozinho"
                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
                                         />
                                     </div>
                                     <button 
                                         type="submit"
-                                        className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 text-sm"
+                                        className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 text-sm flex items-center justify-center gap-2"
                                     >
-                                        Pedir Música 🎤
+                                        <span>🎵</span> Enviar para o Telão
                                     </button>
                                 </form>
                                 <div className="mt-4 bg-zinc-950/50 p-3 rounded-xl border border-zinc-800/60 text-xs text-zinc-400">
-                                    <p>💡 <span className="text-zinc-300 font-medium">Regra:</span> Você pode ter até 2 músicas ativas na fila simultaneamente.</p>
+                                    <p>💡 <span className="text-zinc-300 font-medium">Dica:</span> O pedido vai direto para a fila automática do telão da Toca do Guerreiro.</p>
                                 </div>
                             </div>
                         </div>
@@ -454,7 +517,7 @@
                                                     </span>
                                                     <div>
                                                         <h4 className="font-bold text-zinc-100 text-sm">{item.title}</h4>
-                                                        <p className="text-xs text-zinc-400">{item.artist} • <span className="text-amber-400 font-medium">{item.user}</span></p>
+                                                        <p className="text-xs text-zinc-400">Cantor(a): <span className="text-amber-400 font-medium">{item.user}</span></p>
                                                     </div>
                                                 </div>
                                                 
@@ -506,11 +569,11 @@
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <h4 className="font-bold text-zinc-100 text-sm mt-1">{item.title} - {item.artist}</h4>
+                                                        <h4 className="font-bold text-zinc-100 text-sm mt-1">{item.title}</h4>
                                                         <p className="text-xs text-zinc-400">Cantado por: <span className="text-amber-400 font-medium">{item.user}</span></p>
                                                     </div>
 
-                                                    {/* Sistema de Votação por Estrelas (bloqueado para o próprio dono) */}
+                                                    {/* Sistema de Votação por Estrelas */}
                                                     <div>
                                                         {isOwner ? (
                                                             <span className="bg-zinc-900 text-zinc-500 text-[11px] font-medium px-3 py-2 rounded-xl border border-zinc-800 block text-center">
@@ -621,25 +684,15 @@
                     {editingSong && (
                         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
-                                <h3 className="text-lg font-bold text-zinc-100 mb-4">Editar Música da Fila</h3>
+                                <h3 className="text-lg font-bold text-zinc-100 mb-4">Editar Pedido</h3>
                                 <form onSubmit={handleSaveEdit} className="space-y-4">
                                     <div>
-                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Música</label>
+                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Música / Busca</label>
                                         <input 
                                             type="text" 
                                             required
                                             value={editingSong.title}
                                             onChange={(e) => setEditingSong({ ...editingSong, title: e.target.value })}
-                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Artista / Banda</label>
-                                        <input 
-                                            type="text" 
-                                            required
-                                            value={editingSong.artist}
-                                            onChange={(e) => setEditingSong({ ...editingSong, artist: e.target.value })}
                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
                                         />
                                     </div>
