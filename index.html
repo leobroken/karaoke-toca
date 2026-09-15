@@ -107,12 +107,21 @@
             const [adminPassword, setAdminPassword] = useState('');
             const [editingSong, setEditingSong] = useState(null);
             
-            // Estado local temporário para digitação dos inputs de link antes de salvar
             const [youtubeInputs, setYoutubeInputs] = useState({});
             
-            // Controle do Pular Automático (5 minutos)
-            const [autoSkipEnabled, setAutoSkipEnabled] = useState(false);
+            const [autoSkipEnabled, setAutoSkipEnabled] = useState(() => {
+                return localStorage.getItem('toca_autoskip') === 'true';
+            });
+
+            // Contagem regressiva visual em segundos (5 minutos = 300 segundos)
+            const [timeLeft, setTimeLeft] = useState(300);
             const timerRef = useRef(null);
+            const intervalRef = useRef(null);
+
+            // Sincronizar o estado do autoSkip com o localStorage para o Telão enxergar
+            useEffect(() => {
+                localStorage.setItem('toca_autoskip', autoSkipEnabled);
+            }, [autoSkipEnabled]);
 
             // Verificar se o modo telao foi ativado via URL (?telao=true)
             useEffect(() => {
@@ -161,21 +170,42 @@
                 };
             }, []);
 
-            // Temporizador de 5 minutos caso o Pular Automático esteja ativado
+            // Gerenciamento do temporizador de 5 minutos e contagem regressiva no Telão
             useEffect(() => {
-                if (!isTelaoMode || !autoSkipEnabled || !activePlayingSong) {
-                    if (timerRef.current) clearTimeout(timerRef.current);
-                    return;
-                }
+                if (!isTelaoMode) return;
 
-                timerRef.current = setTimeout(() => {
-                    handleNextSong();
-                }, 5 * 60 * 1000);
+                if (timerRef.current) clearTimeout(timerRef.current);
+                if (intervalRef.current) clearInterval(intervalRef.current);
+
+                const isAutoOn = localStorage.getItem('toca_autoskip') === 'true';
+
+                if (isAutoOn && activePlayingSong && activePlayingSong.embedUrl) {
+                    setTimeLeft(300); // 5 minutos
+
+                    // Intervalo para atualizar o reloginho a cada 1 segundo
+                    intervalRef.current = setInterval(() => {
+                        setTimeLeft(prev => {
+                            if (prev <= 1) {
+                                clearInterval(intervalRef.current);
+                                return 0;
+                            }
+                            return prev - 1;
+                        });
+                    }, 1000);
+
+                    // Timeout para disparar o avanço aos 5 minutos cheios
+                    timerRef.current = setTimeout(() => {
+                        handleNextSong();
+                    }, 5 * 60 * 1000);
+                } else {
+                    setTimeLeft(300);
+                }
 
                 return () => {
                     if (timerRef.current) clearTimeout(timerRef.current);
+                    if (intervalRef.current) clearInterval(intervalRef.current);
                 };
-            }, [activePlayingSong, autoSkipEnabled, isTelaoMode, queue]);
+            }, [isTelaoMode, activePlayingSong, autoSkipEnabled]);
 
             // Máscara automática para o telefone: (XX) XXXXX-XXXX
             const handlePhoneChange = (e) => {
@@ -241,7 +271,7 @@
                         artist: songArtist.trim(),
                         user: user.name,
                         phone: user.phone,
-                        youtubeLink: '', // Inicializa vazio no banco
+                        youtubeLink: '',
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                     setSongTitle('');
@@ -277,7 +307,6 @@
                 setIsAdmin(false);
             };
 
-            // Salvar o link do YouTube diretamente no Firebase para sincronizar entre todos os Admins
             const handleSaveYouTubeLink = async (songId) => {
                 const linkToSave = youtubeInputs[songId] !== undefined ? youtubeInputs[songId] : (queue.find(i => i.id === songId)?.youtubeLink || '');
                 if (!linkToSave.trim()) {
@@ -297,7 +326,6 @@
             };
 
             const handlePlayOnTelao = async (song) => {
-                // Pega o link salvo no banco ou o que está digitado no input local
                 const link = youtubeInputs[song.id] !== undefined ? youtubeInputs[song.id] : (song.youtubeLink || '');
                 if (!link.trim()) {
                     alert('Por favor, cole o link do YouTube da versão de karaokê e clique em "Salvar Link" antes de tocar!');
@@ -311,7 +339,6 @@
                 }
 
                 try {
-                    // Salva também no banco caso ainda não tenha sido salvo
                     await db.collection('queue').doc(song.id).update({ youtubeLink: link.trim() });
 
                     await db.collection('settings').doc('activePlaying').set({ 
@@ -408,6 +435,15 @@
 
             const topSinger = rankedHistory.length > 0 && rankedHistory[0].avgRating > 0 ? rankedHistory[0] : null;
 
+            // Formatar segundos em MM:SS para o telão
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+            };
+
+            const isAutoOn = localStorage.getItem('toca_autoskip') === 'true';
+
             // ==========================================
             // TELA DO MODO TELÃO
             // ==========================================
@@ -442,13 +478,23 @@
                             )}
                         </div>
 
+                        {/* Botão Inferior Direito: Cronômetro se Auto Ativado ou Botão Pular Manual */}
                         <div className="absolute bottom-4 right-6 z-10">
-                            <button 
-                                onClick={handleNextSong}
-                                className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-6 py-3 rounded-xl shadow-lg transition-all text-sm"
-                            >
-                                ⏭️ Pular para Próxima da Fila
-                            </button>
+                            {isAutoOn && activePlayingSong ? (
+                                <div className="bg-zinc-900/90 backdrop-blur border border-amber-500/40 text-amber-400 font-bold px-6 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm">
+                                    <span>⏳ Próxima música em:</span>
+                                    <span className="font-mono text-zinc-100 text-base bg-zinc-950 px-2.5 py-1 rounded-lg border border-zinc-800">
+                                        {formatTime(timeLeft)}
+                                    </span>
+                                </div>
+                            ) : (
+                                <button 
+                                    onClick={handleNextSong}
+                                    className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-6 py-3 rounded-xl shadow-lg transition-all text-sm"
+                                >
+                                    ⏭️ Pular para Próxima da Fila
+                                </button>
+                            )}
                         </div>
                     </div>
                 );
