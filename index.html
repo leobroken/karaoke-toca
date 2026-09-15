@@ -46,6 +46,22 @@
         }
         const db = firebase.firestore();
 
+        // Função auxiliar para extrair o ID do link do YouTube
+        function getYouTubeEmbedUrl(url) {
+            if (!url) return '';
+            let videoId = '';
+            if (url.includes('youtu.be/')) {
+                videoId = url.split('youtu.be/')[1]?.split('?')[0];
+            } else if (url.includes('watch?v=')) {
+                videoId = url.split('watch?v=')[1]?.split('&')[0];
+            } else if (url.includes('embed/')) {
+                videoId = url.split('embed/')[1]?.split('?')[0];
+            } else {
+                videoId = url; // Se o admin já colocar direto o ID
+            }
+            return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1` : '';
+        }
+
         function App() {
             const [user, setUser] = useState(() => {
                 const saved = localStorage.getItem('toca_karaoke_user');
@@ -77,6 +93,7 @@
             const [adminModal, setAdminModal] = useState(false);
             const [adminPassword, setAdminPassword] = useState('');
             const [editingSong, setEditingSong] = useState(null);
+            const [youtubeLinks, setYoutubeLinks] = useState({});
 
             // Verificar se o modo telao foi ativado via URL (?telao=true)
             useEffect(() => {
@@ -204,11 +221,25 @@
                 }
             };
 
-            // Disparar a música para abrir o YouTube otimizado direto na tela do Telão
+            // Disparar a música enviando o link do YouTube informado pelo admin
             const handlePlayOnTelao = async (song) => {
+                const link = youtubeLinks[song.id] || '';
+                if (!link.trim()) {
+                    alert('Por favor, cole o link do YouTube da versão de karaokê no campo ao lado antes de tocar!');
+                    return;
+                }
+
+                const embedUrl = getYouTubeEmbedUrl(link);
+                if (!embedUrl) {
+                    alert('Link do YouTube inválido. Verifique o endereço copiado.');
+                    return;
+                }
+
                 try {
-                    await db.collection('settings').doc('activePlaying').set({ song: song });
-                    alert(`"${song.title}" disparada para o telão! 🎬`);
+                    await db.collection('settings').doc('activePlaying').set({ 
+                        song: { ...song, embedUrl: embedUrl } 
+                    });
+                    alert(`"${song.title}" iniciada no telão com sucesso! 🎬`);
                 } catch (error) {
                     console.error("Erro ao reproduzir no telão: ", error);
                 }
@@ -289,11 +320,9 @@
             const topSinger = rankedHistory.length > 0 && rankedHistory[0].avgRating > 0 ? rankedHistory[0] : null;
 
             // ==========================================
-            // TELA DO MODO TELÃO (Com Disparo Limpo em Tela Cheia)
+            // TELA DO MODO TELÃO (Vídeo Incorporado Direto)
             // ==========================================
             if (isTelaoMode) {
-                const searchUrl = activePlayingSong ? `https://www.youtube.com/results?search_query=${encodeURIComponent(activePlayingSong.title + " " + activePlayingSong.artist + " karaoke")}&autoplay=1` : '';
-
                 return (
                     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none">
                         <div className="absolute top-4 left-6 flex items-center gap-3 z-10">
@@ -308,27 +337,18 @@
                         </div>
 
                         <div className="w-full max-w-5xl aspect-video bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center relative">
-                            {activePlayingSong ? (
-                                <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center bg-zinc-950">
-                                    <span className="text-amber-400 font-bold uppercase tracking-widest text-sm mb-2">Apresentação ao Vivo</span>
-                                    <h1 className="text-4xl font-black text-zinc-100 mb-2">{activePlayingSong.user}</h1>
-                                    <div className="bg-zinc-900 border border-zinc-800 px-8 py-4 rounded-2xl my-4">
-                                        <p className="text-3xl font-extrabold text-amber-500">{activePlayingSong.title}</p>
-                                        <p className="text-lg text-zinc-400 mt-1">{activePlayingSong.artist}</p>
-                                    </div>
-                                    <a 
-                                        href={searchUrl} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-black text-lg px-8 py-4 rounded-xl shadow-2xl shadow-amber-500/30 transition-all transform hover:scale-105 flex items-center gap-2 mt-4"
-                                    >
-                                        <span>▶️ ABRIR VÍDEO DO KARAOKÊ EM TELA CHEIA</span>
-                                    </a>
-                                </div>
+                            {activePlayingSong && activePlayingSong.embedUrl ? (
+                                <iframe 
+                                    className="w-full h-full border-0"
+                                    src={activePlayingSong.embedUrl}
+                                    title="Karaokê Player"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                ></iframe>
                             ) : (
                                 <div className="text-center p-8">
                                     <h2 className="text-3xl font-extrabold text-amber-500 mb-2">Aguardando Próxima Música...</h2>
-                                    <p className="text-zinc-400 text-base">O administrador escolherá a próxima apresentação na Área do Admin 🎤</p>
+                                    <p className="text-zinc-400 text-base">O administrador inserirá o link do YouTube na Área do Admin para iniciar 🎤</p>
                                 </div>
                             )}
                         </div>
@@ -528,7 +548,7 @@
                             </div>
                         </div>
 
-                        {/* Fila de Espera com Botão de Tocar (Admin) */}
+                        {/* Fila de Espera com Campo de Link e Botão Tocar (Admin) */}
                         <div className="md:col-span-2 space-y-8">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
                                 <div className="flex justify-between items-center mb-4">
@@ -541,45 +561,58 @@
                                         Nenhuma música na fila no momento. Peça a primeira!
                                     </div>
                                 ) : (
-                                    <div className="space-y-3">
+                                    <div className="space-y-4">
                                         {queue.map((item, index) => (
-                                            <div key={item.id} className="bg-zinc-950 border border-zinc-800/80 p-4 rounded-xl flex items-center justify-between gap-4">
-                                                <div className="flex items-center gap-3">
-                                                    <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${index === 0 ? 'bg-amber-500 text-zinc-950' : 'bg-zinc-800 text-zinc-400'}`}>
-                                                        {index + 1}
-                                                    </span>
-                                                    <div>
-                                                        <h4 className="font-bold text-zinc-100 text-sm">{item.title}</h4>
-                                                        <p className="text-xs text-zinc-400">{item.artist} • <span className="text-amber-400 font-medium">{item.user}</span></p>
+                                            <div key={item.id} className="bg-zinc-950 border border-zinc-800/80 p-4 rounded-xl flex flex-col gap-3">
+                                                <div className="flex items-center justify-between gap-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${index === 0 ? 'bg-amber-500 text-zinc-950' : 'bg-zinc-800 text-zinc-400'}`}>
+                                                            {index + 1}
+                                                        </span>
+                                                        <div>
+                                                            <h4 className="font-bold text-zinc-100 text-sm">{item.title}</h4>
+                                                            <p className="text-xs text-zinc-400">{item.artist} • <span className="text-amber-400 font-medium">{item.user}</span></p>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="flex items-center gap-2">
+                                                        {isAdmin && (
+                                                            <button 
+                                                                onClick={() => setEditingSong(item)}
+                                                                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs px-3 py-1.5 rounded-lg transition-colors border border-zinc-700"
+                                                            >
+                                                                Editar
+                                                            </button>
+                                                        )}
+                                                        {isAdmin && (
+                                                            <button 
+                                                                onClick={() => handleDeleteSong(item.id)}
+                                                                className="bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs px-3 py-1.5 rounded-lg transition-colors border border-red-500/30"
+                                                            >
+                                                                Excluir
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
-                                                
-                                                <div className="flex items-center gap-2">
-                                                    {isAdmin && (
+
+                                                {/* Campo exclusivo para o Admin colar o link do YouTube e disparar incorporado */}
+                                                {isAdmin && (
+                                                    <div className="flex items-center gap-2 pt-2 border-t border-zinc-900">
+                                                        <input 
+                                                            type="text"
+                                                            placeholder="Cole o link do YouTube aqui (ex: youtube.com/watch?v=...)"
+                                                            value={youtubeLinks[item.id] || ''}
+                                                            onChange={(e) => setYoutubeLinks({ ...youtubeLinks, [item.id]: e.target.value })}
+                                                            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                                                        />
                                                         <button 
                                                             onClick={() => handlePlayOnTelao(item)}
-                                                            className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-xs px-3 py-2 rounded-xl transition-all shadow-md shadow-emerald-500/20"
+                                                            className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-md shadow-emerald-500/20 shrink-0"
                                                         >
                                                             ▶️ Tocar Música
                                                         </button>
-                                                    )}
-                                                    {isAdmin && (
-                                                        <button 
-                                                            onClick={() => setEditingSong(item)}
-                                                            className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs px-3 py-2 rounded-xl transition-colors border border-zinc-700"
-                                                        >
-                                                            Editar
-                                                        </button>
-                                                    )}
-                                                    {isAdmin && (
-                                                        <button 
-                                                            onClick={() => handleDeleteSong(item.id)}
-                                                            className="bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs px-3 py-2 rounded-xl transition-colors border border-red-500/30"
-                                                        >
-                                                            Excluir
-                                                        </button>
-                                                    )}
-                                                </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
