@@ -171,7 +171,7 @@
                     });
                     setSongTitle('');
                     setSongArtist('');
-                    alert('Música enviada para a fila do telão! 🎤');
+                    alert('Música enviada para o telão com sucesso! 🎤');
                 } catch (error) {
                     console.error("Erro ao adicionar música: ", error);
                 }
@@ -270,57 +270,98 @@
             const topSinger = rankedHistory.length > 0 && rankedHistory[0].avgRating > 0 ? rankedHistory[0] : null;
 
             // ==========================================
-            // TELA DO MODO TELÃO (Otimizado com Link Direto de Disparo)
+            // TELA DO MODO TELÃO (Com YouTube Player API Inteligente)
             // ==========================================
             if (isTelaoMode) {
                 const currentPlaying = queue.length > 0 ? queue[0] : null;
-                const searchUrl = currentPlaying ? `https://www.youtube.com/results?search_query=${encodeURIComponent(currentPlaying.title + " " + currentPlaying.artist + " karaoke")}` : '#';
+                const playerRef = useRef(null);
+                const ytPlayerInstance = useRef(null);
+
+                // Carrega a API do YouTube na página do Telão
+                useEffect(() => {
+                    if (!window.YT) {
+                        const tag = document.createElement('script');
+                        tag.src = "https://www.youtube.com/iframe_api";
+                        const firstScriptTag = document.getElementsByTagName('script')[0];
+                        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+                    }
+
+                    window.onYouTubeIframeAPIReady = () => {
+                        initPlayer();
+                    };
+
+                    if (window.YT && window.YT.Player) {
+                        initPlayer();
+                    }
+                }, []);
+
+                const initPlayer = () => {
+                    if (!ytPlayerInstance.current && playerRef.current) {
+                        ytPlayerInstance.current = new window.YT.Player('youtube-player', {
+                            height: '100%',
+                            width: '100%',
+                            playerVars: {
+                                'autoplay': 1,
+                                'controls': 1,
+                                'rel': 0,
+                                'enablejsapi': 1
+                            },
+                            events: {
+                                'onReady': (event) => {
+                                    if (currentPlaying) {
+                                        loadCurrentSong(currentPlaying);
+                                    }
+                                }
+                            }
+                        });
+                    }
+                };
+
+                const loadCurrentSong = (song) => {
+                    if (ytPlayerInstance.current && ytPlayerInstance.current.loadVideoByQuery) {
+                        const query = `${song.title} ${song.artist} karaoke`;
+                        ytPlayerInstance.current.loadVideoByQuery({ query: query, startSeconds: 0 });
+                    }
+                };
+
+                // Sempre que mudar a música da fila, atualiza o player automaticamente
+                useEffect(() => {
+                    if (currentPlaying && ytPlayerInstance.current && ytPlayerInstance.current.loadVideoByQuery) {
+                        loadCurrentSong(currentPlaying);
+                    }
+                }, [currentPlaying?.id]);
 
                 return (
-                    <div className="fixed inset-0 bg-black flex flex-col items-center justify-center p-8 overflow-hidden select-none">
-                        <div className="absolute top-6 left-8 flex items-center gap-3 z-10">
-                            <span className="bg-amber-500 text-zinc-950 font-black px-4 py-2 rounded-xl text-base shadow-lg shadow-amber-500/20 uppercase tracking-wider">
+                    <div className="fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none">
+                        <div className="absolute top-4 left-6 flex items-center gap-3 z-10">
+                            <span className="bg-amber-500 text-zinc-950 font-black px-4 py-1.5 rounded-xl text-sm shadow-lg shadow-amber-500/20 uppercase tracking-wider">
                                 🖥️ Telão Toca do Guerreiro
                             </span>
+                            {currentPlaying && (
+                                <span className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-4 py-1.5 rounded-xl text-sm font-bold">
+                                    Cantando agora: <span className="text-amber-400">{currentPlaying.user}</span> — {currentPlaying.title} ({currentPlaying.artist})
+                                </span>
+                            )}
                         </div>
 
-                        <div className="w-full max-w-4xl bg-zinc-900 border border-amber-500/40 rounded-3xl p-10 text-center shadow-2xl shadow-amber-500/10 flex flex-col items-center justify-center min-h-[400px]">
+                        <div className="w-full max-w-5xl aspect-video bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center relative">
                             {currentPlaying ? (
-                                <>
-                                    <span className="text-amber-400 font-bold uppercase tracking-widest text-sm mb-3">Cantando Agora na Mesa:</span>
-                                    <h1 className="text-4xl sm:text-5xl font-black text-zinc-100 mb-2">{currentPlaying.user}</h1>
-                                    <div className="bg-zinc-950 border border-zinc-800 px-6 py-4 rounded-2xl w-full max-w-xl my-6">
-                                        <p className="text-2xl sm:text-3xl font-bold text-amber-500">{currentPlaying.title}</p>
-                                        <p className="text-lg text-zinc-400 mt-1">{currentPlaying.artist}</p>
-                                    </div>
-
-                                    <a 
-                                        href={searchUrl} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-extrabold text-xl px-10 py-5 rounded-2xl shadow-2xl shadow-amber-500/30 transition-all transform hover:scale-105 flex items-center gap-3 mt-2 animate-bounce"
-                                    >
-                                        <span>▶️ CLIQUE AQUI PARA RODAR NO YOUTUBE</span>
-                                    </a>
-                                    <p className="text-xs text-zinc-500 mt-4">Dica: Basta um clique para o vídeo abrir limpo e sem bloqueio no telão!</p>
-                                </>
+                                <div id="youtube-player" ref={playerRef} className="w-full h-full"></div>
                             ) : (
-                                <div className="py-12">
-                                    <h2 className="text-3xl sm:text-4xl font-extrabold text-amber-500 mb-3">Fila de Karaokê Vazia!</h2>
-                                    <p className="text-zinc-400 text-lg">Faça seu pedido pelo celular e a música aparecerá aqui instantaneamente 🎤</p>
+                                <div className="text-center p-8">
+                                    <h2 className="text-3xl font-extrabold text-amber-500 mb-2">Fila de Karaokê Vazia!</h2>
+                                    <p className="text-zinc-400 text-base">Peça sua música pelo celular para começar a festa na Toca do Guerreiro 🎤</p>
                                 </div>
                             )}
                         </div>
 
-                        <div className="absolute bottom-6 right-8 z-10 flex gap-4">
-                            {currentPlaying && (
-                                <button 
-                                    onClick={handleNextSong}
-                                    className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold px-6 py-3.5 rounded-xl shadow-lg transition-all text-sm border border-zinc-700"
-                                >
-                                    ⏭️ Próxima Música na Fila
-                                </button>
-                            )}
+                        <div className="absolute bottom-4 right-6 z-10">
+                            <button 
+                                onClick={handleNextSong}
+                                className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-6 py-3 rounded-xl shadow-lg transition-all text-sm"
+                            >
+                                ⏭️ Pular para Próxima Música
+                            </button>
                         </div>
                     </div>
                 );
@@ -507,7 +548,7 @@
                                     </button>
                                 </form>
                                 <div className="mt-4 bg-zinc-950/50 p-3 rounded-xl border border-zinc-800/60 text-xs text-zinc-400">
-                                    <p>💡 <span className="text-zinc-300 font-medium">Automático:</span> O telão prepara o player instantaneamente para você tocar!</p>
+                                    <p>💡 <span className="text-zinc-300 font-medium">Automático:</span> O telão busca e toca a versão de karaokê na hora!</p>
                                 </div>
                             </div>
                         </div>
@@ -714,7 +755,7 @@
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium text-zinc-400 mb-1">Artista / Banda</label>
+                                        <label className="block t<text-xs font-medium text-zinc-400 mb-1">Artista / Banda</label>
                                         <input 
                                             type="text" 
                                             required
