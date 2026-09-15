@@ -106,7 +106,9 @@
             const [adminModal, setAdminModal] = useState(false);
             const [adminPassword, setAdminPassword] = useState('');
             const [editingSong, setEditingSong] = useState(null);
-            const [youtubeLinks, setYoutubeLinks] = useState({});
+            
+            // Estado local temporário para digitação dos inputs de link antes de salvar
+            const [youtubeInputs, setYoutubeInputs] = useState({});
             
             // Controle do Pular Automático (5 minutos)
             const [autoSkipEnabled, setAutoSkipEnabled] = useState(false);
@@ -166,7 +168,6 @@
                     return;
                 }
 
-                // Configura 5 minutos (300.000 ms) para pular automaticamente
                 timerRef.current = setTimeout(() => {
                     handleNextSong();
                 }, 5 * 60 * 1000);
@@ -240,6 +241,7 @@
                         artist: songArtist.trim(),
                         user: user.name,
                         phone: user.phone,
+                        youtubeLink: '', // Inicializa vazio no banco
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                     setSongTitle('');
@@ -275,10 +277,30 @@
                 setIsAdmin(false);
             };
 
-            const handlePlayOnTelao = async (song, customLink = null) => {
-                const link = customLink || youtubeLinks[song.id] || '';
+            // Salvar o link do YouTube diretamente no Firebase para sincronizar entre todos os Admins
+            const handleSaveYouTubeLink = async (songId) => {
+                const linkToSave = youtubeInputs[songId] !== undefined ? youtubeInputs[songId] : (queue.find(i => i.id === songId)?.youtubeLink || '');
+                if (!linkToSave.trim()) {
+                    alert('Por favor, cole um link válido antes de salvar!');
+                    return;
+                }
+
+                try {
+                    await db.collection('queue').doc(songId).update({
+                        youtubeLink: linkToSave.trim()
+                    });
+                    alert('Link salvo com sucesso e sincronizado para todos os administradores! 💾');
+                } catch (error) {
+                    console.error("Erro ao salvar link: ", error);
+                    alert('Erro ao salvar o link.');
+                }
+            };
+
+            const handlePlayOnTelao = async (song) => {
+                // Pega o link salvo no banco ou o que está digitado no input local
+                const link = youtubeInputs[song.id] !== undefined ? youtubeInputs[song.id] : (song.youtubeLink || '');
                 if (!link.trim()) {
-                    alert('Por favor, cole o link do YouTube da versão de karaokê no campo ao lado antes de tocar!');
+                    alert('Por favor, cole o link do YouTube da versão de karaokê e clique em "Salvar Link" antes de tocar!');
                     return;
                 }
 
@@ -289,22 +311,15 @@
                 }
 
                 try {
+                    // Salva também no banco caso ainda não tenha sido salvo
+                    await db.collection('queue').doc(song.id).update({ youtubeLink: link.trim() });
+
                     await db.collection('settings').doc('activePlaying').set({ 
-                        song: { ...song, embedUrl: embedUrl } 
+                        song: { ...song, youtubeLink: link.trim(), embedUrl: embedUrl } 
                     });
                 } catch (error) {
                     console.error("Erro ao reproduzir no telão: ", error);
                 }
-            };
-
-            // Botão Salvar Link Individual
-            const handleSaveLinkOnly = (songId) => {
-                const link = youtubeLinks[songId];
-                if (!link || !link.trim()) {
-                    alert('Cole um link válido antes de salvar!');
-                    return;
-                }
-                alert('Link salvo com sucesso para esta música! 👍');
             };
 
             // Avançar música automaticamente
@@ -326,16 +341,11 @@
                     await db.collection('queue').doc(current.id).delete();
 
                     const nextSong = queue.length > 1 ? queue[1] : null;
-                    if (nextSong) {
-                        const nextLink = youtubeLinks[nextSong.id];
-                        if (nextLink) {
-                            const embedUrl = getYouTubeEmbedUrl(nextLink);
-                            await db.collection('settings').doc('activePlaying').set({ 
-                                song: { ...nextSong, embedUrl: embedUrl } 
-                            });
-                        } else {
-                            await db.collection('settings').doc('activePlaying').set({ song: null });
-                        }
+                    if (nextSong && nextSong.youtubeLink) {
+                        const embedUrl = getYouTubeEmbedUrl(nextSong.youtubeLink);
+                        await db.collection('settings').doc('activePlaying').set({ 
+                            song: { ...nextSong, embedUrl: embedUrl } 
+                        });
                     } else {
                         await db.collection('settings').doc('activePlaying').set({ song: null });
                     }
@@ -648,7 +658,7 @@
                             </div>
                         </div>
 
-                        {/* Fila de Espera com Campo de Link, Botão Salvar Link e Tocar */}
+                        {/* Fila de Espera com Campo de Link Sincronizado para todos os Admins */}
                         <div className="md:col-span-2 space-y-8">
                             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
                                 <div className="flex justify-between items-center mb-4">
@@ -695,19 +705,19 @@
                                                     </div>
                                                 </div>
 
-                                                {/* Controles exclusivos para o Admin com Botão Salvar Link e Tocar */}
+                                                {/* Controles para o Admin com Link Sincronizado via Firebase */}
                                                 {isAdmin && (
                                                     <div className="flex flex-col sm:flex-row items-center gap-2 pt-2 border-t border-zinc-900">
                                                         <input 
                                                             type="text"
                                                             placeholder="Cole o link do YouTube aqui..."
-                                                            value={youtubeLinks[item.id] || ''}
-                                                            onChange={(e) => setYoutubeLinks({ ...youtubeLinks, [item.id]: e.target.value })}
+                                                            value={youtubeInputs[item.id] !== undefined ? youtubeInputs[item.id] : (item.youtubeLink || '')}
+                                                            onChange={(e) => setYoutubeInputs({ ...youtubeInputs, [item.id]: e.target.value })}
                                                             className="w-full sm:flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
                                                         />
                                                         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                                                             <button 
-                                                                onClick={() => handleSaveLinkOnly(item.id)}
+                                                                onClick={() => handleSaveYouTubeLink(item.id)}
                                                                 className="bg-zinc-800 hover:bg-zinc-700 text-amber-400 border border-amber-500/30 font-semibold text-xs px-3 py-2 rounded-xl transition-all"
                                                             >
                                                                 💾 Salvar Link
