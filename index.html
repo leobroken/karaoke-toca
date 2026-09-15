@@ -57,9 +57,9 @@
             } else if (url.includes('embed/')) {
                 videoId = url.split('embed/')[1]?.split('?')[0];
             } else {
-                videoId = url; // Se o admin já colocar direto o ID
+                videoId = url;
             }
-            return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1` : '';
+            return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1` : '';
         }
 
         function App() {
@@ -95,6 +95,9 @@
             const [editingSong, setEditingSong] = useState(null);
             const [youtubeLinks, setYoutubeLinks] = useState({});
 
+            // Referência para o Iframe do YouTube controlar o término do vídeo
+            const iframeRef = useRef(null);
+
             // Verificar se o modo telao foi ativado via URL (?telao=true)
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
@@ -110,7 +113,11 @@
                     setQueue(items);
                 });
 
-                const unsubHistoryReal = db.collection('history').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+                const unsubHistoryReal = db.collection('history').orderBy('desc', 'desc').onSnapshot(snapshot => {
+                    // Mantido simples
+                }, () => {});
+
+                const unsubHistory = db.collection('history').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
                     const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setHistory(items);
                 });
@@ -135,12 +142,32 @@
 
                 return () => {
                     unsubQueue();
-                    unsubHistoryReal();
+                    unsubHistory();
                     unsubRatings();
                     unsubSettings();
                     unsubActive();
                 };
             }, []);
+
+            // Otorresponder ao fim do vídeo do YouTube no Telão
+            useEffect(() => {
+                if (!isTelaoMode) return;
+
+                const handleMessage = (event) => {
+                    if (event.data && typeof event.data === 'string') {
+                        try {
+                            const data = JSON.parse(event.data);
+                            // Estado 0 do player do YouTube significa que o vídeo acabou (ENDED)
+                            if (data.event === 'infoDelivery' && data.info && data.info.playerState === 0) {
+                                handleNextSong();
+                            }
+                        } catch (e) {}
+                    }
+                };
+
+                window.addEventListener('message', handleMessage);
+                return () => window.removeEventListener('message', handleMessage);
+            }, [isTelaoMode, queue]);
 
             const handleLogin = (e) => {
                 e.preventDefault();
@@ -222,8 +249,8 @@
             };
 
             // Disparar a música enviando o link do YouTube informado pelo admin
-            const handlePlayOnTelao = async (song) => {
-                const link = youtubeLinks[song.id] || '';
+            const handlePlayOnTelao = async (song, customLink = null) => {
+                const link = customLink || youtubeLinks[song.id] || '';
                 if (!link.trim()) {
                     alert('Por favor, cole o link do YouTube da versão de karaokê no campo ao lado antes de tocar!');
                     return;
@@ -239,27 +266,48 @@
                     await db.collection('settings').doc('activePlaying').set({ 
                         song: { ...song, embedUrl: embedUrl } 
                     });
-                    alert(`"${song.title}" iniciada no telão com sucesso! 🎬`);
                 } catch (error) {
                     console.error("Erro ao reproduzir no telão: ", error);
                 }
             };
 
+            // Avançar para a próxima música e já tocar automaticamente se tiver link salvo/armazenado
             const handleNextSong = async () => {
                 if (queue.length === 0) {
+                    await db.collection('settings').doc('activePlaying').set({ song: null });
                     alert('A fila está vazia!');
                     return;
                 }
                 const current = queue[0];
                 try {
+                    // Adiciona ao histórico
                     await db.collection('history').add({
                         title: current.title,
                         artist: current.artist,
                         user: current.user,
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
+                    
+                    // Remove da fila atual
                     await db.collection('queue').doc(current.id).delete();
-                    await db.collection('settings').doc('activePlaying').set({ song: null });
+
+                    // Verifica se há uma próxima música na fila recém-atualizada
+                    const nextSong = queue.length > 1 ? queue[1] : null;
+                    if (nextSong) {
+                        const nextLink = youtubeLinks[nextSong.id];
+                        if (nextLink) {
+                            // Se a próxima música já tiver link digitado, já dispara ela automaticamente
+                            const embedUrl = getYouTubeEmbedUrl(nextLink);
+                            await db.collection('settings').doc('activePlaying').set({ 
+                                song: { ...nextSong, embedUrl: embedUrl } 
+                            });
+                        } else {
+                            // Se não tiver link, limpa o player do telão aguardando o admin colocar
+                            await db.collection('settings').doc('activePlaying').set({ song: null });
+                        }
+                    } else {
+                        await db.collection('settings').doc('activePlaying').set({ song: null });
+                    }
                 } catch (error) {
                     console.error("Erro ao avançar música: ", error);
                 }
@@ -320,7 +368,7 @@
             const topSinger = rankedHistory.length > 0 && rankedHistory[0].avgRating > 0 ? rankedHistory[0] : null;
 
             // ==========================================
-            // TELA DO MODO TELÃO (Vídeo Incorporado Direto)
+            // TELA DO MODO TELÃO (Automática no fim do vídeo)
             // ==========================================
             if (isTelaoMode) {
                 return (
@@ -339,6 +387,7 @@
                         <div className="w-full max-w-5xl aspect-video bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center relative">
                             {activePlayingSong && activePlayingSong.embedUrl ? (
                                 <iframe 
+                                    ref={iframeRef}
                                     className="w-full h-full border-0"
                                     src={activePlayingSong.embedUrl}
                                     title="Karaokê Player"
@@ -492,7 +541,7 @@
                                     onClick={handleNextSong}
                                     className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2"
                                 >
-                                    ⏭️ Próxima Música
+                                    ⏭️ Próxima Música (Automática)
                                 </button>
                                 <button 
                                     onClick={handleTogglePause}
@@ -769,14 +818,14 @@
                                             required
                                             value={editingSong.title}
                                             onChange={(e) => setEditingSong({ ...editingSong, title: e.target.value })}
-                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
+                                           className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
                                         />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-zinc-400 mb-1">Artista / Banda</label>
                                         <input 
                                             type="text" 
-                                            required
+                               5             required
                                             value={editingSong.artist}
                                             onChange={(e) => setEditingSong({ ...editingSong, artist: e.target.value })}
                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm"
