@@ -344,7 +344,6 @@
                 setUser(userData);
                 localStorage.setItem('toca_karaoke_user', JSON.stringify(userData));
 
-                // Salva ou atualiza o usuário na coleção global de usuários para o Admin monitorar
                 try {
                     const cleanPhoneId = phoneFormatted.replace(/\D/g, '');
                     await db.collection('users').doc(cleanPhoneId).set({
@@ -390,10 +389,20 @@
                 }
             };
 
+            const handleDeleteUser = async (userId, userName) => {
+                if (confirm(`Tem certeza que deseja deletar o usuário "${userName}"?`)) {
+                    try {
+                        await db.collection('users').doc(userId).delete();
+                    } catch (error) {
+                        console.error("Erro ao deletar usuário: ", error);
+                        alert("Erro ao deletar usuário.");
+                    }
+                }
+            };
+
             const handleAddSong = async (e) => {
                 e.preventDefault();
 
-                // Verifica se o usuário atual está silenciado
                 const cleanUserPhone = user.phone ? user.phone.replace(/\D/g, '') : '';
                 if (mutedPhones[cleanUserPhone]) {
                     setMutedAlertMessage(`${user.name} você está impedida de pedir músicas agora. Chama o guerreiro para saber o qué aconteceu.`);
@@ -1171,7 +1180,7 @@
                                                         <h4 className="font-bold text-zinc-100 text-sm">{u.name}</h4>
                                                         <p className="text-xs text-zinc-400 font-mono">{u.phone}</p>
                                                     </div>
-                                                    <div>
+                                                    <div className="flex items-center gap-2">
                                                         <button
                                                             onClick={() => handleToggleMuteUser(u.phone)}
                                                             className={`text-xs font-bold px-3 py-2 rounded-xl transition-all border ${
@@ -1181,6 +1190,12 @@
                                                             }`}
                                                         >
                                                             {isMuted ? '🔇 Silenciado' : '🔊 Silenciar'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteUser(u.id, u.name)}
+                                                            className="text-xs font-bold px-3 py-2 rounded-xl transition-all bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30"
+                                                        >
+                                                            🗑️ Deletar
                                                         </button>
                                                     </div>
                                                 </div>
