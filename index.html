@@ -510,7 +510,6 @@
                 }
             };
 
-            // NOVO: Botão exclusivo de Zerar Fila e Limpar Telão
             const handleClearQueue = async () => {
                 if (confirm('Deseja realmente limpar toda a fila de espera e esvaziar o telão?')) {
                     try {
@@ -520,7 +519,6 @@
                         });
                         await batch.commit();
 
-                        // Limpa o telão e fundo imediatamente
                         await db.collection('settings').doc('activePlaying').set({ song: null });
                         await db.collection('settings').doc('backgroundSong').set({ song: null });
 
@@ -826,7 +824,6 @@
                                     <span className="underline">{autoSkipEnabled ? 'ATIVADO' : 'DESATIVADO'}</span>
                                 </button>
 
-                                <!-- Botão Novo: Zerar Fila e Limpar Telão -->
                                 <button 
                                     onClick={handleClearQueue}
                                     className="bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border border-orange-500/40 font-bold px-5 py-3 rounded-xl transition-all text-sm"
