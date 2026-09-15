@@ -154,7 +154,7 @@
                         const embedUrl = getYouTubeEmbedUrl(nextSong.youtubeLink);
                         await db.collection('settings').doc('backgroundSong').set({ song: null });
                         await db.collection('settings').doc('activePlaying').set({ 
-                            song: { ...nextSong, embedUrl: embedUrl } 
+                            song: { ...nextSong, id: nextSong.id, embedUrl: embedUrl } 
                         });
                     } else {
                         await db.collection('settings').doc('activePlaying').set({ song: null });
@@ -244,7 +244,6 @@
 
                 if (introTimerRef.current) clearInterval(introTimerRef.current);
 
-                // Alterado de 3 para 10 segundos
                 setIntroCountdown({ song, count: 10 });
 
                 let currentCount = 10;
@@ -268,7 +267,7 @@
                         if (embedUrl) {
                             db.collection('settings').doc('backgroundSong').set({ song: null });
                             db.collection('settings').doc('activePlaying').set({ 
-                                song: { ...firstSong, embedUrl: embedUrl } 
+                                song: { ...firstSong, id: firstSong.id, embedUrl: embedUrl } 
                             });
                         }
                     }
@@ -412,9 +411,17 @@
 
                     const docRef = await db.collection('queue').add(songData);
                     
-                    if (!activePlayingSong && !backgroundSongActive && songYoutubeLink.trim()) {
+                    // Verifica se o telão está livre (sem música tocando E sem música de fundo ativa)
+                    const activeDoc = await db.collection('settings').doc('activePlaying').get();
+                    const bgDoc = await db.collection('settings').doc('backgroundSong').get();
+                    
+                    const currentActive = activeDoc.exists ? activeDoc.data().song : null;
+                    const currentBg = bgDoc.exists ? bgDoc.data().song : null;
+
+                    if ((!currentActive || !currentActive.embedUrl) && !currentBg && songYoutubeLink.trim()) {
                         const embedUrl = getYouTubeEmbedUrl(songYoutubeLink.trim());
                         if (embedUrl) {
+                            await db.collection('settings').doc('backgroundSong').set({ song: null });
                             await db.collection('settings').doc('activePlaying').set({ 
                                 song: { id: docRef.id, ...songData, embedUrl: embedUrl } 
                             });
