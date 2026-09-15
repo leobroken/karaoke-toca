@@ -57,7 +57,7 @@
             } else {
                 videoId = url;
             }
-            return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=0&enablejsapi=1` : '';
+            return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1` : '';
         }
 
         function App() {
@@ -79,7 +79,7 @@
             const [songYoutubeLink, setSongYoutubeLink] = useState('');
             
             const [queue, setQueue] = useState([]);
-            const queueRef = useRef(queue);
+            const queueRef = useRef(queue); // Referência atualizada da fila para uso em timers
             useEffect(() => { queueRef.current = queue; }, [queue]);
 
             const [history, setHistory] = useState([]);
@@ -115,10 +115,6 @@
             const [youtubeInputs, setYoutubeInputs] = useState({});
             const [autoSkipEnabled, setAutoSkipEnabled] = useState(false);
 
-            const [usersList, setUsersList] = useState([]);
-            const [showUsersModal, setShowUsersModal] = useState(false);
-            const [isUserMuted, setIsUserMuted] = useState(false);
-
             const [timeLeft, setTimeLeft] = useState(300);
             const timerRef = useRef(null);
             const intervalRef = useRef(null);
@@ -130,6 +126,7 @@
                 }
             }, []);
 
+            // Função de avançar música isolada para ser acessada com segurança pelo temporizador
             const handleNextSong = async () => {
                 const currentQueue = queueRef.current;
                 if (currentQueue.length === 0) {
@@ -154,7 +151,7 @@
                         const embedUrl = getYouTubeEmbedUrl(nextSong.youtubeLink);
                         await db.collection('settings').doc('backgroundSong').set({ song: null });
                         await db.collection('settings').doc('activePlaying').set({ 
-                            song: { ...nextSong, id: nextSong.id, embedUrl: embedUrl } 
+                            song: { ...nextSong, embedUrl: embedUrl } 
                         });
                     } else {
                         await db.collection('settings').doc('activePlaying').set({ song: null });
@@ -210,20 +207,6 @@
                     }
                 });
 
-                const unsubUsers = db.collection('users').orderBy('lastLogin', 'desc').onSnapshot(snapshot => {
-                    const uList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setUsersList(uList);
-                    
-                    if (user) {
-                        const currentUserDoc = uList.find(u => u.phone === user.phone);
-                        if (currentUserDoc && currentUserDoc.muted) {
-                            setIsUserMuted(true);
-                        } else {
-                            setIsUserMuted(false);
-                        }
-                    }
-                });
-
                 return () => {
                     unsubQueue();
                     unsubHistory();
@@ -232,9 +215,8 @@
                     unsubActive();
                     unsubAutoSkip();
                     unsubBg();
-                    unsubUsers();
                 };
-            }, [activePlayingSong, user]);
+            }, [activePlayingSong]);
 
             const triggerIntroVinheta = (song) => {
                 if (!isTelaoMode) {
@@ -244,9 +226,9 @@
 
                 if (introTimerRef.current) clearInterval(introTimerRef.current);
 
-                setIntroCountdown({ song, count: 10 });
+                setIntroCountdown({ song, count: 3 });
 
-                let currentCount = 10;
+                let currentCount = 3;
                 introTimerRef.current = setInterval(() => {
                     currentCount -= 1;
                     if (currentCount > 0) {
@@ -259,6 +241,22 @@
                 }, 1000);
             };
 
+            useEffect(() => {
+                if (queue.length > 0 && backgroundSongActive) {
+                    const firstSong = queue[0];
+                    if (firstSong.youtubeLink) {
+                        const embedUrl = getYouTubeEmbedUrl(firstSong.youtubeLink);
+                        if (embedUrl) {
+                            db.collection('settings').doc('backgroundSong').set({ song: null });
+                            db.collection('settings').doc('activePlaying').set({ 
+                                song: { ...firstSong, embedUrl: embedUrl } 
+                            });
+                        }
+                    }
+                }
+            }, [queue, backgroundSongActive]);
+
+            // Cronômetro automático corrigido de 5 minutos
             useEffect(() => {
                 if (!isTelaoMode || introCountdown) return;
 
@@ -314,7 +312,7 @@
                 setInputPhone(value);
             };
 
-            const handleLogin = async (e) => {
+            const handleLogin = (e) => {
                 e.preventDefault();
                 if (!inputName.trim() || !inputPhone.trim()) return;
                 const nameFormatted = inputName.trim();
@@ -328,17 +326,6 @@
 
                 setUser(userData);
                 localStorage.setItem('toca_karaoke_user', JSON.stringify(userData));
-
-                try {
-                    await db.collection('users').doc(phoneFormatted).set({
-                        name: nameFormatted,
-                        phone: phoneFormatted,
-                        lastLogin: firebase.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
-                } catch (err) {
-                    console.error("Erro ao registrar usuário: ", err);
-                }
-
                 setInputName('');
                 setInputPhone('');
             };
@@ -350,26 +337,10 @@
                 }
             };
 
-            const handleToggleMuteUser = async (userId, currentMutedStatus) => {
-                const newStatus = !currentMutedStatus;
-                try {
-                    await db.collection('users').doc(userId).update({
-                        muted: newStatus
-                    });
-                } catch (error) {
-                    console.error("Erro ao alterar silenciamento: ", error);
-                }
-            };
-
             const userActiveSongsCount = user ? queue.filter(item => item.phone === user.phone).length : 0;
 
             const handleAddSong = async (e) => {
                 e.preventDefault();
-
-                if (isUserMuted) {
-                    alert('Você foi silenciado temporariamente pelo administrador e não pode pedir músicas no momento.');
-                    return;
-                }
                 
                 if (isPaused) {
                     setIsVideoMuted(true);
@@ -394,7 +365,16 @@
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
 
-                    await db.collection('queue').add(songData);
+                    const docRef = await db.collection('queue').add(songData);
+                    
+                    if (!activePlayingSong && !backgroundSongActive && songYoutubeLink.trim()) {
+                        const embedUrl = getYouTubeEmbedUrl(songYoutubeLink.trim());
+                        if (embedUrl) {
+                            await db.collection('settings').doc('activePlaying').set({ 
+                                song: { id: docRef.id, ...songData, embedUrl: embedUrl } 
+                            });
+                        }
+                    }
 
                     setSongTitle('');
                     setSongArtist('');
@@ -463,8 +443,6 @@
 
                 try {
                     await db.collection('queue').doc(song.id).update({ youtubeLink: link.trim() });
-                    
-                    // CORREÇÃO: Força o desligamento imediato da música de fundo ao tocar música do cliente
                     await db.collection('settings').doc('backgroundSong').set({ song: null });
 
                     await db.collection('settings').doc('activePlaying').set({ 
@@ -512,26 +490,6 @@
                 }
             };
 
-            const handleClearQueue = async () => {
-                if (confirm('Deseja realmente limpar toda a fila de espera e esvaziar o telão?')) {
-                    try {
-                        const batch = db.batch();
-                        queue.forEach(item => {
-                            batch.delete(db.collection('queue').doc(item.id));
-                        });
-                        await batch.commit();
-
-                        await db.collection('settings').doc('activePlaying').set({ song: null });
-                        await db.collection('settings').doc('backgroundSong').set({ song: null });
-
-                        alert('Fila limpa e telão esvaziado com sucesso! 🧹');
-                    } catch (error) {
-                        console.error("Erro ao limpar fila: ", error);
-                        alert('Erro ao limpar a fila.');
-                    }
-                }
-            };
-
             const handleSaveEdit = async (e) => {
                 e.preventDefault();
                 if (!editingSong.title.trim() || !editingSong.artist.trim()) return;
@@ -560,11 +518,7 @@
             };
 
             const openTelaoWindow = () => {
-                const telaoUrl = window.location.origin + window.location.pathname + '?telao=true';
-                const newWindow = window.open(telaoUrl, '_blank', 'noopener,noreferrer');
-                if (!newWindow) {
-                    window.location.href = telaoUrl;
-                }
+                window.open(window.location.pathname + '?telao=true', '_blank');
             };
 
             const handleRate = async (historyId, stars) => {
@@ -720,12 +674,6 @@
                         <img src="banner.jpg" alt="Toca do Guerreiro Karaokê" className="w-full h-full object-cover object-center" />
                     </div>
 
-                    {isUserMuted && (
-                        <div className="bg-red-500/20 border border-red-500/40 text-red-300 p-4 rounded-2xl mb-6 text-center font-bold text-sm animate-pulse">
-                            🔇 Você foi silenciado temporariamente pelo administrador e não pode pedir músicas.
-                        </div>
-                    )}
-
                     <div className="bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-zinc-900 border border-amber-500/40 rounded-2xl p-4 sm:p-5 mb-6 flex items-center gap-4 shadow-xl shadow-amber-500/5">
                         <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-amber-500 text-zinc-950 flex items-center justify-center text-2xl font-black shrink-0 shadow-lg shadow-amber-500/30">
                             👑
@@ -800,12 +748,6 @@
                                     🖥️ Abrir Modo Telão
                                 </button>
                                 <button 
-                                    onClick={() => setShowUsersModal(true)}
-                                    className="bg-sky-500 hover:bg-sky-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-sky-500/20 flex items-center gap-2 text-sm"
-                                >
-                                    👥 Usuários ({usersList.length})
-                                </button>
-                                <button 
                                     onClick={handleNextSong}
                                     className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 text-sm"
                                 >
@@ -827,13 +769,6 @@
                                 </button>
 
                                 <button 
-                                    onClick={handleClearQueue}
-                                    className="bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border border-orange-500/40 font-bold px-5 py-3 rounded-xl transition-all text-sm"
-                                >
-                                    🧹 Zerar Fila e Telão
-                                </button>
-
-                                <button 
                                     onClick={handleResetNotes}
                                     className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold px-5 py-3 rounded-xl transition-all text-sm"
                                 >
@@ -846,7 +781,7 @@
                                     🎵 Música Aleatória / Fundo para evitar Silêncio
                                 </h4>
                                 <p className="text-xs text-zinc-400 mb-3">
-                                    Cole o link do YouTube abaixo. Caso deseje som ambiente no telão, ative aqui.
+                                    Cole o link do YouTube abaixo. Caso a fila esteja vazia, essa música tocará no telão. Assim que chegar um pedido novo, ela será substituída automaticamente pela música do cliente!
                                 </p>
                                 <form onSubmit={handlePlayBackgroundSong} className="flex flex-col sm:flex-row gap-2">
                                     <input 
@@ -922,9 +857,9 @@
                                     </div>
                                     <button 
                                         type="submit"
-                                        className={`w-full font-bold py-3 rounded-xl transition-all shadow-lg text-sm ${isUserMuted ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600 text-zinc-950 shadow-amber-500/20'}`}
+                                        className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 text-sm"
                                     >
-                                        {isUserMuted ? 'Silenciado 🔇' : 'Pedir para o Telão 🎤'}
+                                        Pedir para o Telão 🎤
                                     </button>
                                 </form>
                             </div>
@@ -1064,51 +999,6 @@
                             </div>
                         </div>
                     </div>
-
-                    {showUsersModal && (
-                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[85vh] flex flex-col">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
-                                        👥 Usuários Conectados ({usersList.length})
-                                    </h3>
-                                    <button 
-                                        onClick={() => setShowUsersModal(false)}
-                                        className="text-zinc-400 hover:text-zinc-100 font-bold text-sm bg-zinc-800 px-3 py-1.5 rounded-lg"
-                                    >
-                                        ✕ Fechar
-                                    </button>
-                                </div>
-                                <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                                    {usersList.length === 0 ? (
-                                        <p className="text-center py-8 text-zinc-500 text-sm">Nenhum usuário registrado ainda.</p>
-                                    ) : (
-                                        usersList.map((u) => (
-                                            <div key={u.id} className="bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl flex items-center justify-between gap-4">
-                                                <div>
-                                                    <h4 className="font-bold text-zinc-100 text-sm flex items-center gap-2">
-                                                        {u.name}
-                                                        {u.muted && (
-                                                            <span className="bg-red-500/20 text-red-400 text-[10px] font-bold px-2 py-0.5 rounded border border-red-500/30 uppercase">
-                                                                Silenciado
-                                                            </span>
-                                                        )}
-                                                    </h4>
-                                                    <p className="text-xs text-zinc-400 font-mono mt-0.5">📞 {u.phone}</p>
-                                                </div>
-                                                <button 
-                                                    onClick={() => handleToggleMuteUser(u.id, u.muted)}
-                                                    className={`text-xs font-bold px-4 py-2 rounded-xl transition-all shrink-0 ${u.muted ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950' : 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40'}`}
-                                                >
-                                                    {u.muted ? '🔊 Reativar' : '🔇 Silenciar'}
-                                                </button>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
                     {showPausedModal && (
                         <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
