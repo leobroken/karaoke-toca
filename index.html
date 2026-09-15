@@ -57,7 +57,7 @@
             } else {
                 videoId = url;
             }
-            return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1` : '';
+            return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=0&enablejsapi=1` : '';
         }
 
         function App() {
@@ -463,6 +463,8 @@
 
                 try {
                     await db.collection('queue').doc(song.id).update({ youtubeLink: link.trim() });
+                    
+                    // CORREÇÃO: Força o desligamento imediato da música de fundo ao tocar música do cliente
                     await db.collection('settings').doc('backgroundSong').set({ song: null });
 
                     await db.collection('settings').doc('activePlaying').set({ 
