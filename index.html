@@ -79,7 +79,7 @@
             const [songYoutubeLink, setSongYoutubeLink] = useState('');
             
             const [queue, setQueue] = useState([]);
-            const queueRef = useRef(queue); // Referência atualizada da fila para uso em timers
+            const queueRef = useRef(queue);
             useEffect(() => { queueRef.current = queue; }, [queue]);
 
             const [history, setHistory] = useState([]);
@@ -126,7 +126,6 @@
                 }
             }, []);
 
-            // Função de avançar música isolada para ser acessada com segurança pelo temporizador
             const handleNextSong = async () => {
                 const currentQueue = queueRef.current;
                 if (currentQueue.length === 0) {
@@ -226,9 +225,10 @@
 
                 if (introTimerRef.current) clearInterval(introTimerRef.current);
 
-                setIntroCountdown({ song, count: 3 });
+                // Contagem regressiva ajustada para 5 segundos
+                setIntroCountdown({ song, count: 5 });
 
-                let currentCount = 3;
+                let currentCount = 5;
                 introTimerRef.current = setInterval(() => {
                     currentCount -= 1;
                     if (currentCount > 0) {
@@ -256,7 +256,6 @@
                 }
             }, [queue, backgroundSongActive]);
 
-            // Cronômetro automático corrigido de 5 minutos
             useEffect(() => {
                 if (!isTelaoMode || introCountdown) return;
 
