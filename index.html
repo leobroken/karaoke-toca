@@ -205,6 +205,7 @@
             const handleNextSong = async () => {
                 const currentQueue = queueRef.current;
                 
+                // Salva no histórico apenas quando a música que estava tocando realmente acaba/avança
                 if (activePlayingSong && activePlayingSong.id && !backgroundSongActive) {
                     try {
                         await db.collection('history').add({
@@ -229,16 +230,6 @@
 
                 const current = currentQueue[0];
                 try {
-                    await db.collection('history').add({
-                        title: current.title,
-                        artist: current.artist,
-                        user: current.user,
-                        phone: current.phone || '',
-                        likes: 0,
-                        likedPhones: [],
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                    
                     await db.collection('queue').doc(current.id).delete();
 
                     const nextSong = currentQueue.length > 1 ? currentQueue[1] : null;
@@ -632,6 +623,7 @@
 
                     const docRef = await db.collection('queue').add(songData);
                     
+                    // Apenas define a música como ativa se o player estiver completamente ocioso (sem tocar nada)
                     if (!activePlayingSong && !backgroundSongActive && videoId) {
                         await db.collection('settings').doc('activePlaying').set({ 
                             song: { id: docRef.id, ...songData, timestamp: Date.now() } 
@@ -855,8 +847,6 @@
                 }
             };
 
-            // Cada performance individual é mantida separadamente por ID no histórico do Firebase,
-            // permitindo que o mesmo cliente ou clientes diferentes tenham entradas distintas no ranking.
             const rankedHistory = history.map(item => {
                 const totalLikes = item.likes || 0;
                 return { ...item, totalLikes };
