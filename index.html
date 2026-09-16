@@ -206,20 +206,16 @@
             const [adminPassword, setAdminPassword] = useState('');
             const [editingSong, setEditingSong] = useState(null);
             const [youtubeInputs, setYoutubeInputs] = useState({});
-            const [autoSkipEnabled, setAutoSkipEnabled] = useState(false);
 
             const [usersList, setUsersList] = useState([]);
             const [mutedPhones, setMutedPhones] = useState({});
             const [showUsersModal, setShowUsersModal] = useState(false);
             const [mutedAlertMessage, setMutedAlertMessage] = useState(null);
 
-            const [timeLeft, setTimeLeft] = useState(300);
-            const timerRef = useRef(null);
-            const intervalRef = useRef(null);
-
             const ytPlayerRef = useRef(null);
             const currentVideoIdRef = useRef(null);
             const lastSongIdProcessedRef = useRef(null);
+            const checkEndIntervalRef = useRef(null);
 
             const activePlayingSongRef = useRef(activePlayingSong);
             useEffect(() => { activePlayingSongRef.current = activePlayingSong; }, [activePlayingSong]);
@@ -337,12 +333,6 @@
                     }
                 });
 
-                const unsubAutoSkip = db.collection('settings').doc('autoSkip').onSnapshot(doc => {
-                    if (doc.exists) {
-                        setAutoSkipEnabled(doc.data().enabled || false);
-                    }
-                });
-
                 const unsubBg = db.collection('settings').doc('backgroundSong').onSnapshot(doc => {
                     if (doc.exists) {
                         setBackgroundSongActive(doc.data().song || null);
@@ -380,7 +370,6 @@
                     unsubCelebration();
                     unsubSettings();
                     unsubActive();
-                    unsubAutoSkip();
                     unsubBg();
                     unsubTelaoMute();
                     unsubUsers();
@@ -437,6 +426,35 @@
                 }
             }, [queue, backgroundSongActive, activePlayingSong]);
 
+            // Verificador de término exato do vídeo por segundo (Garante o avanço automático sem falhar)
+            useEffect(() => {
+                if (!isTelaoMode) return;
+
+                if (checkEndIntervalRef.current) clearInterval(checkEndIntervalRef.current);
+
+                checkEndIntervalRef.current = setInterval(() => {
+                    if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function' && typeof ytPlayerRef.current.getDuration === 'function') {
+                        const currentTime = ytPlayerRef.current.getCurrentTime();
+                        const duration = ytPlayerRef.current.getDuration();
+                        
+                        // Se o vídeo estiver tocando e faltar menos de 0.8 segundos para acabar (ou já tiver acabado)
+                        if (duration > 0 && currentTime > 0 && (duration - currentTime < 0.8)) {
+                            clearInterval(checkEndIntervalRef.current);
+                            if (!backgroundSongActiveRef.current) {
+                                handleNextSong();
+                            } else {
+                                ytPlayerRef.current.seekTo(0);
+                                ytPlayerRef.current.playVideo();
+                            }
+                        }
+                    }
+                }, 1000);
+
+                return () => {
+                    if (checkEndIntervalRef.current) clearInterval(checkEndIntervalRef.current);
+                };
+            }, [isTelaoMode, activePlayingSong, backgroundSongActive]);
+
             useEffect(() => {
                 if (!isTelaoMode) return;
                 const currentPlaying = backgroundSongActive || activePlayingSong;
@@ -476,7 +494,9 @@
                                 'autoplay': 1,
                                 'enablejsapi': 1,
                                 'controls': 1,
-                                'mute': 0
+                                'mute': 0,
+                                'modestbranding': 1,
+                                'rel': 0
                             },
                             events: {
                                 'onReady': (event) => {
@@ -488,12 +508,11 @@
                                     }
                                 },
                                 'onStateChange': (event) => {
-                                    // Estado 0 significa que o vídeo do YouTube acabou de terminar
                                     if (event.data === YT.PlayerState.ENDED) {
                                         if (!backgroundSongActiveRef.current) {
                                             handleNextSong();
                                         } else {
-                                            // Se for música de fundo e acabar, reinicia ou limpa
+                                            event.target.seekTo(0);
                                             event.target.playVideo();
                                         }
                                     }
