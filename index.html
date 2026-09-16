@@ -208,10 +208,7 @@
                     if (doc.exists) {
                         const newSong = doc.data().song || null;
                         if (newSong) {
-                            // Se for forçado ou ID diferente, atualiza
-                            if (!activePlayingSong || activePlayingSong.id !== newSong.id || activePlayingSong.embedUrl !== newSong.embedUrl || activePlayingSong.forceTimestamp !== newSong.forceTimestamp) {
-                                triggerIntroVinheta(newSong);
-                            }
+                            setActivePlayingSong(newSong);
                         } else {
                             setActivePlayingSong(null);
                         }
@@ -259,33 +256,10 @@
                     unsubUsers();
                     unsubMuted();
                 };
-            }, [activePlayingSong]);
-
-            const triggerIntroVinheta = (song) => {
-                if (!isTelaoMode) {
-                    setActivePlayingSong(song);
-                    return;
-                }
-
-                if (introTimerRef.current) clearInterval(introTimerRef.current);
-
-                setIntroCountdown({ song, count: 5 });
-
-                let currentCount = 5;
-                introTimerRef.current = setInterval(() => {
-                    currentCount -= 1;
-                    if (currentCount > 0) {
-                        setIntroCountdown({ song, count: currentCount });
-                    } else {
-                        clearInterval(introTimerRef.current);
-                        setIntroCountdown(null);
-                        setActivePlayingSong(song);
-                    }
-                }, 1000);
-            };
+            }, []);
 
             useEffect(() => {
-                if (queue.length > 0 && backgroundSongActive) {
+                if (queue.length > 0 && backgroundSongActive && !activePlayingSong) {
                     const firstSong = queue[0];
                     if (firstSong.youtubeLink) {
                         const embedUrl = getYouTubeEmbedUrl(firstSong.youtubeLink);
@@ -297,10 +271,10 @@
                         }
                     }
                 }
-            }, [queue, backgroundSongActive]);
+            }, [queue, backgroundSongActive, activePlayingSong]);
 
             useEffect(() => {
-                if (!isTelaoMode || introCountdown) return;
+                if (!isTelaoMode) return;
 
                 if (timerRef.current) clearTimeout(timerRef.current);
                 if (intervalRef.current) clearInterval(intervalRef.current);
@@ -329,7 +303,7 @@
                     if (timerRef.current) clearTimeout(timerRef.current);
                     if (intervalRef.current) clearInterval(intervalRef.current);
                 };
-            }, [isTelaoMode, activePlayingSong, autoSkipEnabled, introCountdown]);
+            }, [isTelaoMode, activePlayingSong, autoSkipEnabled]);
 
             const handleToggleAutoSkip = async () => {
                 const newState = !autoSkipEnabled;
@@ -543,13 +517,29 @@
                 }
 
                 try {
+                    // Atualiza no banco da fila
                     await db.collection('queue').doc(song.id).update({ youtubeLink: link.trim() });
                     await db.collection('settings').doc('backgroundSong').set({ song: null });
 
-                    // Força um timestamp único para garantir que o listener do telão detecte a mudança e recarregue o player
-                    await db.collection('settings').doc('activePlaying').set({ 
-                        song: { ...song, youtubeLink: link.trim(), embedUrl: embedUrl, forceTimestamp: Date.now() } 
-                    });
+                    // Zera primeiro para forçar o player a reiniciar
+                    await db.collection('settings').doc('activePlaying').set({ song: null });
+
+                    // Pequeno intervalo e envia o novo activePlaying com força total
+                    setTimeout(async () => {
+                        await db.collection('settings').doc('activePlaying').set({ 
+                            song: { 
+                                id: song.id,
+                                title: song.title,
+                                artist: song.artist,
+                                user: song.user,
+                                phone: song.phone || '',
+                                youtubeLink: link.trim(), 
+                                embedUrl: embedUrl,
+                                timestamp: Date.now() 
+                            } 
+                        });
+                    }, 200);
+
                 } catch (error) {
                     console.error("Erro ao reproduzir no telão: ", error);
                 }
