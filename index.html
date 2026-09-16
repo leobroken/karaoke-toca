@@ -526,6 +526,31 @@
                 }
             };
 
+            const handlePlayOnTelao = async (song) => {
+                const link = youtubeInputs[song.id] !== undefined ? youtubeInputs[song.id] : (song.youtubeLink || '');
+                if (!link.trim()) {
+                    alert('Por favor, cole o link do YouTube da versão de karaokê e clique em "Salvar Link" antes de tocar!');
+                    return;
+                }
+
+                const embedUrl = getYouTubeEmbedUrl(link);
+                if (!embedUrl) {
+                    alert('Link do YouTube inválido. Verifique o endereço copiado.');
+                    return;
+                }
+
+                try {
+                    await db.collection('queue').doc(song.id).update({ youtubeLink: link.trim() });
+                    await db.collection('settings').doc('backgroundSong').set({ song: null });
+
+                    await db.collection('settings').doc('activePlaying').set({ 
+                        song: { ...song, youtubeLink: link.trim(), embedUrl: embedUrl } 
+                    });
+                } catch (error) {
+                    console.error("Erro ao reproduzir no telão: ", error);
+                }
+            };
+
             const handlePlayBackgroundSong = async (e) => {
                 e.preventDefault();
                 if (!backgroundLinkInput.trim()) return;
@@ -1048,7 +1073,11 @@
                                             React.createElement('button', {
                                                 onClick: () => handleSaveYouTubeLink(item.id),
                                                 className: 'bg-zinc-800 hover:bg-zinc-700 text-amber-400 border border-amber-500/30 font-semibold text-xs px-3 py-2 rounded-xl transition-all'
-                                            }, '💾 Salvar Link')
+                                            }, '💾 Salvar Link'),
+                                            React.createElement('button', {
+                                                onClick: () => handlePlayOnTelao(item),
+                                                className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-xs px-3.5 py-2 rounded-xl transition-all shadow-md shadow-emerald-500/20'
+                                            }, '🔄 Tocar Novamente')
                                         )
                                     )
                                 ))
