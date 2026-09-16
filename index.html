@@ -832,50 +832,53 @@
                 ),
                 isAdmin && React.createElement(
                     'div',
-                    { className: 'bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 mb-8 space-y-5' },
-                    React.createElement('h3', { className: 'text-amber-400 font-bold text-lg flex items-center gap-2' }, '👑 Painel de Administração'),
+                    { className: 'bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 mb-8 space-y-4' },
+                    React.createElement('h3', { className: 'text-amber-400 font-bold text-base flex items-center gap-2' }, '👑 Painel de Administração'),
                     React.createElement(
                         'div',
-                        { className: 'flex flex-wrap gap-4 items-center' },
+                        { className: 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 items-center' },
                         React.createElement('button', {
                             onClick: openTelaoWindow,
-                            className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2 text-sm'
-                        }, '🖥️ Abrir Modo Telão'),
+                            className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-500/10 text-xs flex items-center justify-center gap-1 text-center'
+                        }, '🖥️ Telão'),
                         React.createElement('button', {
                             onClick: handleToggleTelaoPlayPause,
-                            className: `${isTelaoMutedState ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950' : 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40'} font-bold px-5 py-3 rounded-xl transition-all text-sm`
-                        }, isTelaoMutedState ? '▶️ Tocar música do telão' : '⏸️ Parar música do telão'),
+                            className: `${isTelaoMutedState ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950' : 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40'} font-bold px-3 py-2.5 rounded-xl transition-all text-xs text-center`
+                        }, isTelaoMutedState ? '▶️ Tocar Telão' : '⏸️ Pausar Telão'),
                         React.createElement('button', {
                             onClick: () => setShowUsersModal(true),
-                            className: 'bg-sky-500 hover:bg-sky-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-sky-500/20 flex items-center gap-2 text-sm'
+                            className: 'bg-sky-500 hover:bg-sky-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl transition-all shadow-md shadow-sky-500/10 text-xs flex items-center justify-center gap-1 text-center'
                         }, `👥 Usuários (${usersList.length})`),
                         React.createElement('button', {
                             onClick: handleNextSong,
-                            className: 'bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 text-sm'
-                        }, '⏭️ Próxima Música (Automática)'),
+                            className: 'bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl transition-all shadow-md shadow-amber-500/10 text-xs flex items-center justify-center gap-1 text-center'
+                        }, '⏭️ Próxima'),
                         React.createElement('button', {
                             onClick: handleTogglePause,
-                            className: `${isPaused ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950' : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40'} font-bold px-5 py-3 rounded-xl transition-all text-sm`
-                        }, isPaused ? '▶️ Retomar Pedidos' : '⏸️ Pausar Pedidos'),
+                            className: `${isPaused ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950' : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40'} font-bold px-3 py-2.5 rounded-xl transition-all text-xs text-center`
+                        }, isPaused ? '▶️ Retomar' : '⏸️ Pausar Pedidos'),
                         React.createElement(
                             'button',
                             {
                                 onClick: handleToggleAutoSkip,
-                                className: `${autoSkipEnabled ? 'bg-emerald-500 text-zinc-950 font-black' : 'bg-zinc-800 text-zinc-400 border border-zinc-700 font-medium'} px-4 py-3 rounded-xl transition-all text-xs flex items-center gap-2`
+                                className: `${autoSkipEnabled ? 'bg-emerald-500 text-zinc-950 font-black' : 'bg-zinc-800 text-zinc-400 border border-zinc-700 font-medium'} px-3 py-2.5 rounded-xl transition-all text-xs flex items-center justify-center gap-1 text-center`
                             },
-                            React.createElement('span', null, '⏱️ Pular Automático (5 min):'),
-                            React.createElement('span', { className: 'underline' }, autoSkipEnabled ? 'ATIVADO' : 'DESATIVADO')
-                        ),
+                            React.createElement('span', null, autoSkipEnabled ? '⏱️ Pular Auto (ON)' : '⏱️ Pular Auto (OFF)')
+                        )
+                    ),
+                    React.createElement(
+                        'div',
+                        { className: 'flex justify-end pt-1' },
                         React.createElement('button', {
                             onClick: handleResetNotes,
-                            className: 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold px-5 py-3 rounded-xl transition-all text-sm'
+                            className: 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold px-3 py-2 rounded-xl transition-all text-xs'
                         }, '🗑️ Zerar Notas e Histórico')
                     ),
                     React.createElement(
                         'div',
-                        { className: 'bg-zinc-900 border border-zinc-800 p-4 rounded-xl' },
-                        React.createElement('h4', { className: 'text-zinc-200 text-sm font-bold mb-2 flex items-center gap-2' }, '🎵 Música Aleatória / Fundo para evitar Silêncio'),
-                        React.createElement('p', { className: 'text-xs text-zinc-400 mb-3' }, 'Cole o link do YouTube abaixo. Caso a fila esteja vazia, essa música tocará no telão. Assim que chegar um pedido novo, ela será substituída automaticamente pela música do cliente!'),
+                        { className: 'bg-zinc-900 border border-zinc-800 p-3.5 rounded-xl' },
+                        React.createElement('h4', { className: 'text-zinc-200 text-xs font-bold mb-1.5 flex items-center gap-1.5' }, '🎵 Música Aleatória / Fundo para evitar Silêncio'),
+                        React.createElement('p', { className: 'text-[11px] text-zinc-400 mb-2.5' }, 'Cole o link do YouTube abaixo. Caso a fila esteja vazia, essa música tocará no telão. Assim que chegar um pedido novo, ela será substituída automaticamente pela música do cliente!'),
                         React.createElement(
                             'form',
                             { onSubmit: handlePlayBackgroundSong, className: 'flex flex-col sm:flex-row gap-2' },
@@ -891,8 +894,8 @@
                                 { className: 'flex gap-2 justify-end' },
                                 React.createElement('button', {
                                     type: 'submit',
-                                    className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-xs px-4 py-2 rounded-xl transition-all'
-                                }, '▶️ Tocar Música de Fundo'),
+                                    className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-xs px-3.5 py-2 rounded-xl transition-all'
+                                }, '▶️ Tocar Fundo'),
                                 backgroundSongActive && React.createElement('button', {
                                     type: 'button',
                                     onClick: handleStopBackgroundSong,
