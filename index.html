@@ -348,6 +348,7 @@
                         clearInterval(introTimerRef.current);
                         setIntroCountdown(null);
                         if (ytPlayerRef.current && typeof ytPlayerRef.current.playVideo === 'function' && !isTelaoMutedState) {
+                            ytPlayerRef.current.unMute();
                             ytPlayerRef.current.playVideo();
                         }
                     }
@@ -373,7 +374,7 @@
                 }
             }, [queue, backgroundSongActive, activePlayingSong]);
 
-            // Gerenciamento e atualização do Player do YouTube no Telão
+            // Gerenciamento robusto do Player do YouTube no Telão com Autoplay Forçado
             useEffect(() => {
                 if (!isTelaoMode) return;
                 const currentPlaying = backgroundSongActive || activePlayingSong;
@@ -388,14 +389,15 @@
                     return;
                 }
 
-                // Se o player já existe, mas mudou o ID ou foi acionado "Tocar Novamente" (timestamp novo)
                 if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
                     if (currentVideoIdRef.current !== videoId || (currentPlaying && currentPlaying.timestamp)) {
                         currentVideoIdRef.current = videoId;
                         if (backgroundSongActive || !activePlayingSong) {
                             ytPlayerRef.current.loadVideoById(videoId);
+                            ytPlayerRef.current.unMute();
+                            ytPlayerRef.current.playVideo();
                         } else {
-                            ytPlayerRef.current.cueVideoById(videoId); // Aguarda a contagem regressiva antes de dar play
+                            ytPlayerRef.current.cueVideoById(videoId); // Aguarda o fim da contagem regressiva para dar play
                         }
                     }
                     return;
@@ -413,12 +415,14 @@
                             width: '100%',
                             videoId: videoId,
                             playerVars: {
-                                'autoplay': (backgroundSongActive || !activePlayingSong) ? 1 : 0,
+                                'autoplay': 1,
                                 'enablejsapi': 1,
-                                'controls': 1
+                                'controls': 1,
+                                'mute': 0
                             },
                             events: {
                                 'onReady': (event) => {
+                                    event.target.unMute();
                                     if (isTelaoMutedState) {
                                         event.target.pauseVideo();
                                     } else if (backgroundSongActive || !activePlayingSong) {
@@ -834,7 +838,7 @@
                 return React.createElement(
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
-                    // Container dos corações flutuantes exclusivo no Telão
+                    // Container dos corações flutuantes no Telão
                     React.createElement(
                         'div',
                         { className: 'absolute inset-0 pointer-events-none overflow-hidden z-40' },
@@ -990,8 +994,6 @@
             return React.createElement(
                 'div',
                 { className: 'max-w-4xl mx-auto px-4 py-8' },
-                // Tela do usuário (celular) limpa de corações flutuantes visuais
-
                 React.createElement('div', { className: 'w-full h-48 sm:h-72 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl mb-6' }, React.createElement('img', { src: 'banner.jpg', alt: 'Toca do Guerreiro Karaokê', className: 'w-full h-full object-cover object-center' })),
                 
                 activePlayingSong && React.createElement(
