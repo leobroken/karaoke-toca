@@ -96,7 +96,6 @@
             return videoId;
         }
 
-        // Função refinada para garantir que o YouTube traga estritamente a versão Karaokê/Instrumental
         async function fetchYouTubeApiLink(title, artist) {
             if (!YOUTUBE_API_KEY) return "";
             try {
@@ -404,9 +403,7 @@
                         currentVideoIdRef.current = videoId;
                         ytPlayerRef.current.loadVideoById(videoId);
                         ytPlayerRef.current.unMute();
-                        if (backgroundSongActive || !activePlayingSong) {
-                            ytPlayerRef.current.playVideo();
-                        }
+                        ytPlayerRef.current.playVideo();
                     }
                     return;
                 }
@@ -433,7 +430,7 @@
                                     event.target.unMute();
                                     if (isTelaoMutedState) {
                                         event.target.pauseVideo();
-                                    } else if (backgroundSongActive || !activePlayingSong) {
+                                    } else {
                                         event.target.playVideo();
                                     }
                                 }
@@ -706,6 +703,7 @@
                     if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
                         ytPlayerRef.current.loadVideoById(videoId);
                         ytPlayerRef.current.unMute();
+                        ytPlayerRef.current.playVideo();
                     }
 
                     setTimeout(async () => {
