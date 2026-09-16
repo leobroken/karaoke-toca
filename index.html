@@ -133,7 +133,6 @@
             const handleNextSong = async () => {
                 const currentQueue = queueRef.current;
                 
-                // Se houver uma música ativa atualmente na tela que veio da fila, joga ela pro histórico antes de avançar
                 if (activePlayingSong && activePlayingSong.id && !backgroundSongActive) {
                     try {
                         await db.collection('history').add({
@@ -507,31 +506,6 @@
                 } catch (error) {
                     console.error("Erro ao salvar link: ", error);
                     alert('Erro ao salvar o link.');
-                }
-            };
-
-            const handlePlayOnTelao = async (song) => {
-                const link = youtubeInputs[song.id] !== undefined ? youtubeInputs[song.id] : (song.youtubeLink || '');
-                if (!link.trim()) {
-                    alert('Por favor, cole o link do YouTube da versão de karaokê e clique em "Salvar Link" antes de tocar!');
-                    return;
-                }
-
-                const embedUrl = getYouTubeEmbedUrl(link);
-                if (!embedUrl) {
-                    alert('Link do YouTube inválido. Verifique o endereço copiado.');
-                    return;
-                }
-
-                try {
-                    await db.collection('queue').doc(song.id).update({ youtubeLink: link.trim() });
-                    await db.collection('settings').doc('backgroundSong').set({ song: null });
-
-                    await db.collection('settings').doc('activePlaying').set({ 
-                        song: { ...song, youtubeLink: link.trim(), embedUrl: embedUrl } 
-                    });
-                } catch (error) {
-                    console.error("Erro ao reproduzir no telão: ", error);
                 }
             };
 
@@ -1045,11 +1019,7 @@
                                             React.createElement('button', {
                                                 onClick: () => handleSaveYouTubeLink(item.id),
                                                 className: 'bg-zinc-800 hover:bg-zinc-700 text-amber-400 border border-amber-500/30 font-semibold text-xs px-3 py-2 rounded-xl transition-all'
-                                            }, '💾 Salvar Link'),
-                                            React.createElement('button', {
-                                                onClick: () => handlePlayOnTelao(item),
-                                                className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-md shadow-emerald-500/20'
-                                            }, '▶️ Tocar Música')
+                                            }, '💾 Salvar Link')
                                         )
                                     )
                                 ))
