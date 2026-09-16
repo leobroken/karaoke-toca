@@ -52,7 +52,7 @@
         }
         const db = firebase.firestore();
 
-        // Gerador de Bips sonoros usando Web Audio API (Sem arquivos externos)
+        // Gerador de Bips sonoros usando Web Audio API
         function playBeep(isHigh = false) {
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -63,7 +63,7 @@
                 const gain = ctx.createGain();
 
                 osc.type = 'sine';
-                osc.frequency.value = isHigh ? 880 : 440; // 440Hz (Lá grave) ou 880Hz (Lá agudo para o fim)
+                osc.frequency.value = isHigh ? 880 : 440;
 
                 gain.gain.setValueAtTime(0.3, ctx.currentTime);
                 gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
@@ -129,7 +129,6 @@
             const [backgroundSongActive, setBackgroundSongActive] = useState(null);
             const [isTelaoMutedState, setIsTelaoMutedState] = useState(false);
 
-            // Estados da contagem regressiva visual e sonora no telão
             const [introCountdown, setIntroCountdown] = useState(null);
             const introTimerRef = useRef(null);
 
@@ -226,7 +225,7 @@
                         const videoId = getYouTubeVideoId(nextSong.youtubeLink);
                         await db.collection('settings').doc('backgroundSong').set({ song: null });
                         await db.collection('settings').doc('activePlaying').set({ 
-                            song: { ...nextSong, videoId: videoId } 
+                            song: { ...nextSong, videoId: videoId, timestamp: Date.now() } 
                         });
                     } else {
                         await db.collection('settings').doc('activePlaying').set({ song: null });
@@ -325,12 +324,11 @@
                 };
             }, [isTelaoMode]);
 
-            // Dispara a contagem regressiva de 3 segundos com bips sonoros sempre que uma nova música de cliente entra no telão
+            // Dispara a contagem regressiva sonora e visual no telão
             useEffect(() => {
                 if (!isTelaoMode || !activePlayingSong || backgroundSongActive) return;
                 
-                // Evita repetir a contagem se for a mesma música já processada
-                const songUniqueKey = activePlayingSong.id || activePlayingSong.videoId;
+                const songUniqueKey = `${activePlayingSong.id || activePlayingSong.videoId}-${activePlayingSong.timestamp || 0}`;
                 if (lastSongIdProcessedRef.current === songUniqueKey) return;
                 lastSongIdProcessedRef.current = songUniqueKey;
 
@@ -346,10 +344,9 @@
                         playBeep(false);
                         setIntroCountdown(prev => prev ? { ...prev, count: count } : null);
                     } else {
-                        playBeep(true); // Bip mais agudo no final (Já!)
+                        playBeep(true);
                         clearInterval(introTimerRef.current);
                         setIntroCountdown(null);
-                        // Inicia ou retoma o player do YouTube após a contagem
                         if (ytPlayerRef.current && typeof ytPlayerRef.current.playVideo === 'function' && !isTelaoMutedState) {
                             ytPlayerRef.current.playVideo();
                         }
@@ -369,14 +366,14 @@
                         if (videoId) {
                             db.collection('settings').doc('backgroundSong').set({ song: null });
                             db.collection('settings').doc('activePlaying').set({ 
-                                song: { ...firstSong, videoId: videoId } 
+                                song: { ...firstSong, videoId: videoId, timestamp: Date.now() } 
                             });
                         }
                     }
                 }
             }, [queue, backgroundSongActive, activePlayingSong]);
 
-            // Sincronização e criação do Player do YouTube no Telão
+            // Gerenciamento e atualização do Player do YouTube no Telão
             useEffect(() => {
                 if (!isTelaoMode) return;
                 const currentPlaying = backgroundSongActive || activePlayingSong;
@@ -391,7 +388,16 @@
                     return;
                 }
 
-                if (currentVideoIdRef.current === videoId && ytPlayerRef.current) {
+                // Se o player já existe, mas mudou o ID ou foi acionado "Tocar Novamente" (timestamp novo)
+                if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+                    if (currentVideoIdRef.current !== videoId || (currentPlaying && currentPlaying.timestamp)) {
+                        currentVideoIdRef.current = videoId;
+                        if (backgroundSongActive || !activePlayingSong) {
+                            ytPlayerRef.current.loadVideoById(videoId);
+                        } else {
+                            ytPlayerRef.current.cueVideoById(videoId); // Aguarda a contagem regressiva antes de dar play
+                        }
+                    }
                     return;
                 }
 
@@ -407,7 +413,7 @@
                             width: '100%',
                             videoId: videoId,
                             playerVars: {
-                                'autoplay': (backgroundSongActive || !activePlayingSong) ? 1 : 0, // Música de fundo toca direto, pedido de cliente espera a contagem
+                                'autoplay': (backgroundSongActive || !activePlayingSong) ? 1 : 0,
                                 'enablejsapi': 1,
                                 'controls': 1
                             },
@@ -606,7 +612,7 @@
                     
                     if (!activePlayingSong && !backgroundSongActive && videoId) {
                         await db.collection('settings').doc('activePlaying').set({ 
-                            song: { id: docRef.id, ...songData } 
+                            song: { id: docRef.id, ...songData, timestamp: Date.now() } 
                         });
                     }
 
@@ -718,7 +724,8 @@
                         artist: 'Bar Toca do Guerreiro',
                         user: 'Administração',
                         videoId: videoId,
-                        youtubeLink: backgroundLinkInput.trim()
+                        youtubeLink: backgroundLinkInput.trim(),
+                        timestamp: Date.now()
                     };
 
                     await db.collection('settings').doc('activePlaying').set({ song: null });
@@ -803,9 +810,6 @@
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
                     }
-
-                    triggerFloatingHeart();
-
                 } catch (err) {
                     console.error("Erro ao registrar curtida:", err);
                 }
@@ -830,7 +834,7 @@
                 return React.createElement(
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
-                    // Container dos corações flutuantes no telão
+                    // Container dos corações flutuantes exclusivo no Telão
                     React.createElement(
                         'div',
                         { className: 'absolute inset-0 pointer-events-none overflow-hidden z-40' },
@@ -986,23 +990,10 @@
             return React.createElement(
                 'div',
                 { className: 'max-w-4xl mx-auto px-4 py-8' },
-                // Container dos corações flutuantes na tela do celular ao clicar
-                React.createElement(
-                    'div',
-                    { className: 'fixed inset-0 pointer-events-none overflow-hidden z-50' },
-                    floatingHearts.map((id, index) => {
-                        const randomLeft = 20 + (index * 23) % 60;
-                        return React.createElement('div', {
-                            key: id,
-                            style: { left: `${randomLeft}%`, bottom: '20%' },
-                            className: 'absolute text-4xl floating-heart filter drop-shadow-lg'
-                        }, '❤️');
-                    })
-                ),
+                // Tela do usuário (celular) limpa de corações flutuantes visuais
 
                 React.createElement('div', { className: 'w-full h-48 sm:h-72 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl mb-6' }, React.createElement('img', { src: 'banner.jpg', alt: 'Toca do Guerreiro Karaokê', className: 'w-full h-full object-cover object-center' })),
                 
-                // Banner de Música Tocando Agora com Botão de Curtir em Tempo Real
                 activePlayingSong && React.createElement(
                     'div',
                     { className: 'bg-gradient-to-r from-red-500/20 via-amber-500/10 to-zinc-900 border border-red-500/40 rounded-2xl p-5 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl' },
