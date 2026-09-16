@@ -63,7 +63,7 @@
         }
         const db = firebase.firestore();
 
-        // Gerador de Bips sonoros e som de estrelas usando Web Audio API
+        // Gerador de Bips sonoros
         function playBeep(isHigh = false) {
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -96,7 +96,7 @@
                 if (!AudioContext) return;
                 const ctx = new AudioContext();
 
-                const notes = [523.25, 659.25, 783.99, 1046.50]; // Acorde alegre (C5, E5, G5, C6)
+                const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51]; 
                 notes.forEach((freq, index) => {
                     const osc = ctx.createOscillator();
                     const gain = ctx.createGain();
@@ -105,14 +105,14 @@
                     osc.frequency.value = freq;
 
                     const startTime = ctx.currentTime + (index * 0.08);
-                    gain.gain.setValueAtTime(0.2, startTime);
-                    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.6);
+                    gain.gain.setValueAtTime(0.25, startTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.7);
 
                     osc.connect(gain);
                     gain.connect(ctx.destination);
 
                     osc.start(startTime);
-                    osc.stop(startTime + 0.6);
+                    osc.stop(startTime + 0.7);
                 });
             } catch (e) {
                 console.error("Erro ao reproduzir som de estrelas:", e);
@@ -175,9 +175,6 @@
             useEffect(() => { queueRef.current = queue; }, [queue]);
 
             const [history, setHistory] = useState([]);
-            const historyRef = useRef(history);
-            useEffect(() => { historyRef.current = history; }, [history]);
-
             const [floatingHearts, setFloatingHearts] = useState([]);
             const [starMessages, setStarMessages] = useState([]);
 
@@ -302,26 +299,20 @@
 
                 const unsubHistory = db.collection('history').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
                     const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    
-                    const currentHistory = historyRef.current;
-                    if (isTelaoMode && currentHistory.length > 0) {
-                        items.forEach(newItem => {
-                            const oldItem = currentHistory.find(h => h.id === newItem.id);
-                            if (oldItem) {
-                                const oldLikes = oldItem.likes || 0;
-                                const newLikes = newItem.likes || 0;
-                                if (newLikes > oldLikes) {
-                                    triggerFloatingHeart();
-                                    // Se atingiu um múltiplo de 3 corações (ex: 3, 6, 9...), dispara o show de estrelas e mensagem especial
-                                    if (newLikes >= 3 && Math.floor(newLikes / 3) > Math.floor(oldLikes / 3)) {
-                                        triggerStarCelebration();
-                                    }
-                                }
-                            }
-                        });
-                    }
-
                     setHistory(items);
+                });
+
+                // Escuta global de eventos de corações/comemorações no telão
+                const unsubCelebration = db.collection('settings').doc('celebration').onSnapshot(doc => {
+                    if (doc.exists && isTelaoMode) {
+                        const data = doc.data();
+                        if (data && data.timestamp && (Date.now() - data.timestamp < 5000)) {
+                            triggerFloatingHeart();
+                            if (data.type === 'stars') {
+                                triggerStarCelebration();
+                            }
+                        }
+                    }
                 });
 
                 const unsubSettings = db.collection('settings').doc('status').onSnapshot(doc => {
@@ -381,6 +372,7 @@
                 return () => {
                     unsubQueue();
                     unsubHistory();
+                    unsubCelebration();
                     unsubSettings();
                     unsubActive();
                     unsubAutoSkip();
@@ -871,6 +863,9 @@
                 
                 try {
                     const docSnap = await historyRef.get();
+                    let newLikesCount = 1;
+                    let shouldTriggerStars = false;
+
                     if (docSnap.exists) {
                         const data = docSnap.data();
                         const likedPhones = data.likedPhones || [];
@@ -878,6 +873,14 @@
                         if (likedPhones.includes(userPhone)) {
                             alert('Você já curtiu esta performance! Cada pessoa pode curtir uma vez por música.');
                             return;
+                        }
+
+                        const oldLikes = data.likes || 0;
+                        newLikesCount = oldLikes + 1;
+
+                        // Verifica se cruzou um múltiplo de 3 (3, 6, 9...)
+                        if (newLikesCount >= 3 && Math.floor(newLikesCount / 3) > Math.floor(oldLikes / 3)) {
+                            shouldTriggerStars = true;
                         }
 
                         await historyRef.update({
@@ -895,6 +898,13 @@
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
                     }
+
+                    // Dispara o evento global no Firebase para o Telão reproduzir som e animação
+                    await db.collection('settings').doc('celebration').set({
+                        type: shouldTriggerStars ? 'stars' : 'heart',
+                        timestamp: Date.now()
+                    });
+
                 } catch (err) {
                     console.error("Erro ao registrar curtida:", err);
                 }
@@ -932,7 +942,7 @@
                             }, '❤️');
                         })
                     ),
-                    // Container de Estrelas e Mensagem Especial "Ta mandando bem! 👏" a cada 3 corações
+                    // Container de Estrelas e Mensagem Especial "Ta mandando bem! 👏"
                     React.createElement(
                         'div',
                         { className: 'absolute inset-0 pointer-events-none overflow-hidden z-50 flex items-center justify-center' },
@@ -941,7 +951,7 @@
                                 'div',
                                 {
                                     key: id,
-                                    className: 'absolute flex flex-col items-center floating-star-message bg-gradient-to-r from-amber-500/90 via-yellow-400/90 to-amber-600/90 border-2 border-yellow-200 text-zinc-950 font-black px-8 py-4 rounded-3xl shadow-2xl shadow-yellow-500/50 text-2xl sm:text-4xl tracking-wide text-center'
+                                    className: 'absolute flex flex-col items-center floating-star-message bg-gradient-to-r from-amber-500/95 via-yellow-400/95 to-amber-600/95 border-2 border-yellow-200 text-zinc-950 font-black px-8 py-4 rounded-3xl shadow-2xl shadow-yellow-500/50 text-2xl sm:text-4xl tracking-wide text-center'
                                 },
                                 React.createElement('div', { className: 'flex gap-3 text-4xl sm:text-6xl mb-1 animate-bounce' }, '⭐', '🌟', '⭐'),
                                 'Tá mandando bem! 👏'
