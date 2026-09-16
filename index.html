@@ -527,9 +527,10 @@
             };
 
             const handlePlayOnTelao = async (song) => {
+                // Pega o link que está na caixinha de input digitada pelo admin ou o que já estava salvo
                 const link = youtubeInputs[song.id] !== undefined ? youtubeInputs[song.id] : (song.youtubeLink || '');
                 if (!link.trim()) {
-                    alert('Por favor, cole o link do YouTube da versão de karaokê e clique em "Salvar Link" antes de tocar!');
+                    alert('Por favor, cole um link do YouTube válido antes de tocar!');
                     return;
                 }
 
@@ -540,6 +541,7 @@
                 }
 
                 try {
+                    // Atualiza o link no documento da fila e manda tocar imediatamente no telão
                     await db.collection('queue').doc(song.id).update({ youtubeLink: link.trim() });
                     await db.collection('settings').doc('backgroundSong').set({ song: null });
 
