@@ -96,7 +96,6 @@
             return videoId;
         }
 
-        // Função oficial para buscar o link exato do primeiro vídeo de karaokê via API do YouTube
         async function fetchYouTubeApiLink(title, artist) {
             if (!YOUTUBE_API_KEY) return "";
             try {
@@ -346,7 +345,6 @@
                 };
             }, [isTelaoMode]);
 
-            // Dispara a contagem regressiva sonora e visual no telão
             useEffect(() => {
                 if (!isTelaoMode || !activePlayingSong || backgroundSongActive) return;
                 
@@ -396,7 +394,6 @@
                 }
             }, [queue, backgroundSongActive, activePlayingSong]);
 
-            // Gerenciamento do Player do YouTube no Telão
             useEffect(() => {
                 if (!isTelaoMode) return;
                 const currentPlaying = backgroundSongActive || activePlayingSong;
@@ -614,7 +611,6 @@
                 setIsSearchingAuto(true);
 
                 try {
-                    // Busca automática obrigatória pelo YouTube sem precisar de input do usuário
                     const finalLink = await fetchYouTubeApiLink(songTitle.trim(), songArtist.trim());
                     const videoId = getYouTubeVideoId(finalLink);
 
@@ -820,7 +816,6 @@
             const handleSendHeartForActiveSong = async () => {
                 if (!activePlayingSong || !activePlayingSong.id || !user) return;
 
-                // Validação: Quem cantou a música não pode curtir sua própria performance
                 if (activePlayingSong.phone && activePlayingSong.phone === user.phone) {
                     alert('Você não pode curtir a sua própria performance! Deixe para os fãs curtirem. 😉');
                     return;
@@ -860,6 +855,8 @@
                 }
             };
 
+            // Cada performance individual é mantida separadamente por ID no histórico do Firebase,
+            // permitindo que o mesmo cliente ou clientes diferentes tenham entradas distintas no ranking.
             const rankedHistory = history.map(item => {
                 const totalLikes = item.likes || 0;
                 return { ...item, totalLikes };
@@ -879,7 +876,6 @@
                 return React.createElement(
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
-                    // Container dos corações flutuantes no Telão
                     React.createElement(
                         'div',
                         { className: 'absolute inset-0 pointer-events-none overflow-hidden z-40' },
@@ -1038,7 +1034,6 @@
                 { className: 'max-w-4xl mx-auto px-4 py-8' },
                 React.createElement('div', { className: 'w-full h-48 sm:h-72 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl mb-6' }, React.createElement('img', { src: 'banner.jpg', alt: 'Toca do Guerreiro Karaokê', className: 'w-full h-full object-cover object-center' })),
                 
-                // Caixa "Tocando Agora" só aparece se houver música ativa no telão
                 activePlayingSong && React.createElement(
                     'div',
                     { className: 'bg-gradient-to-r from-red-500/20 via-amber-500/10 to-zinc-900 border border-red-500/40 rounded-2xl p-5 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl' },
