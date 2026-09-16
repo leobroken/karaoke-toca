@@ -47,6 +47,9 @@
             appId: "1:722633752685:web:7ac81abddc58e9aef27f64"
         };
 
+        // Chave da API do YouTube configurada
+        const YOUTUBE_API_KEY = "AIzaSyDsv-VNFmBbyaBSJcb-50_plCp5xCycSV4"; 
+
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
         }
@@ -93,22 +96,23 @@
             return videoId;
         }
 
-        // Função para buscar automaticamente o ID do primeiro vídeo de karaokê no YouTube sem chave de API
-        async function fetchAutoYouTubeId(title, artist) {
+        // Função oficial para buscar o link exato do primeiro vídeo de karaokê via API do YouTube
+        async function fetchYouTubeApiLink(title, artist) {
+            if (!YOUTUBE_API_KEY) return "";
             try {
                 const query = encodeURIComponent(`${title} ${artist} karaoke`);
-                const response = await fetch(`https://www.youtube.com/results?search_query=${query}`);
-                const html = await response.text();
+                const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${query}&type=video&key=${YOUTUBE_API_KEY}`;
+                const response = await fetch(url);
+                const data = await response.json();
                 
-                // Procura o padrão de ID de vídeo do YouTube injetado no script interno da página de busca
-                const match = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-                if (match && match[1]) {
-                    return match[1];
+                if (data.items && data.items.length > 0) {
+                    const videoId = data.items[0].id.videoId;
+                    return `https://www.youtube.com/watch?v=${videoId}`;
                 }
             } catch (e) {
-                console.error("Erro na busca automática do YouTube:", e);
+                console.error("Erro ao buscar link na API do YouTube:", e);
             }
-            return '';
+            return "";
         }
 
         function App() {
@@ -393,7 +397,7 @@
                 }
             }, [queue, backgroundSongActive, activePlayingSong]);
 
-            // Gerenciamento robusto do Player do YouTube no Telão com Autoplay Forçado
+            // Gerenciamento do Player do YouTube no Telão
             useEffect(() => {
                 if (!isTelaoMode) return;
                 const currentPlaying = backgroundSongActive || activePlayingSong;
@@ -611,14 +615,19 @@
                 setIsSearchingAuto(true);
 
                 try {
-                    let videoId = songYoutubeLink.trim() ? getYouTubeVideoId(songYoutubeLink.trim()) : '';
+                    let finalLink = songYoutubeLink.trim();
+                    let videoId = finalLink ? getYouTubeVideoId(finalLink) : '';
                     
-                    // Se o usuário não colocou link, busca o primeiro vídeo de karaokê automaticamente no YouTube
                     if (!videoId) {
-                        videoId = await fetchAutoYouTubeId(songTitle.trim(), songArtist.trim());
+                        finalLink = await fetchYouTubeApiLink(songTitle.trim(), songArtist.trim());
+                        videoId = getYouTubeVideoId(finalLink);
                     }
 
-                    const finalLink = videoId ? `https://www.youtube.com/watch?v=${videoId}` : songYoutubeLink.trim();
+                    if (!videoId) {
+                        alert('Não foi possível encontrar um vídeo de karaokê automaticamente para esta música. Por favor, cole o link do YouTube manualmente.');
+                        setIsSearchingAuto(false);
+                        return;
+                    }
 
                     const songData = {
                         title: songTitle.trim(),
@@ -1245,7 +1254,7 @@
                                         type: 'text',
                                         value: songYoutubeLink,
                                         onChange: (e) => setSongYoutubeLink(e.target.value),
-                                        placeholder: 'Deixe em branco para buscar sozinho...',
+                                        placeholder: 'Deixe em branco para buscar o link sozinho...',
                                         className: 'w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm'
                                     })
                                 ),
@@ -1253,7 +1262,7 @@
                                     type: 'submit',
                                     disabled: isSearchingAuto,
                                     className: 'w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-zinc-950 font-bold py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 text-sm flex items-center justify-center gap-2'
-                                }, isSearchingAuto ? React.createElement('span', null, '🔍 Buscando Karaokê no YouTube...') : 'Pedir para o Telão 🎤')
+                                }, isSearchingAuto ? React.createElement('span', null, '🔍 Buscando link exato no YouTube...') : 'Pedir para o Telão 🎤')
                             )
                         )
                     ),
