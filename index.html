@@ -88,7 +88,6 @@
             useEffect(() => { queueRef.current = queue; }, [queue]);
 
             const [history, setHistory] = useState([]);
-            const [likesData, setLikesData] = useState({});
             const [floatingHearts, setFloatingHearts] = useState([]);
 
             const [isPaused, setIsPaused] = useState(false);
@@ -149,6 +148,7 @@
                             artist: activePlayingSong.artist,
                             user: activePlayingSong.user,
                             phone: activePlayingSong.phone || '',
+                            likes: 0,
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
                     } catch (err) {
@@ -169,6 +169,7 @@
                         artist: current.artist,
                         user: current.user,
                         phone: current.phone || '',
+                        likes: 0,
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                     
@@ -197,23 +198,22 @@
 
                 const unsubHistory = db.collection('history').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
                     const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setHistory(items);
-                });
-
-                const unsubLikes = db.collection('likes').doc('data').onSnapshot(doc => {
-                    if (doc.exists) {
-                        const data = doc.data() || {};
-                        setLikesData(data);
-                        
-                        // Se houver alteração recente de likes, dispara o coração flutuante no telão
-                        if (isTelaoMode) {
-                            const newHeartId = Date.now() + Math.random();
-                            setFloatingHearts(prev => [...prev, newHeartId]);
-                            setTimeout(() => {
-                                setFloatingHearts(prev => prev.filter(id => id !== newHeartId));
-                            }, 2500);
-                        }
+                    
+                    // Detecta se houve aumento de likes em alguma música para disparar o coração flutuante no telão
+                    if (isTelaoMode && history.length > 0) {
+                        items.forEach(newItem => {
+                            const oldItem = history.find(h => h.id === newItem.id);
+                            if (oldItem && newItem.likes > (oldItem.likes || 0)) {
+                                const newHeartId = Date.now() + Math.random();
+                                setFloatingHearts(prev => [...prev, newHeartId]);
+                                setTimeout(() => {
+                                    setFloatingHearts(prev => prev.filter(id => id !== newHeartId));
+                                }, 2500);
+                            }
+                        });
                     }
+
+                    setHistory(items);
                 });
 
                 const unsubSettings = db.collection('settings').doc('status').onSnapshot(doc => {
@@ -265,7 +265,6 @@
                 return () => {
                     unsubQueue();
                     unsubHistory();
-                    unsubLikes();
                     unsubSettings();
                     unsubActive();
                     unsubAutoSkip();
@@ -274,7 +273,7 @@
                     unsubUsers();
                     unsubMuted();
                 };
-            }, [isTelaoMode]);
+            }, [isTelaoMode, history]);
 
             useEffect(() => {
                 if (queue.length > 0 && backgroundSongActive && !activePlayingSong) {
@@ -614,7 +613,6 @@
                     history.forEach(item => {
                         batch.delete(db.collection('history').doc(item.id));
                     });
-                    batch.set(db.collection('likes').doc('data'), {});
                     await batch.commit();
                 }
             };
@@ -628,14 +626,45 @@
                 window.open(window.location.pathname + '?telao=true', '_blank');
             };
 
-            const handleSendHeart = async (historyId) => {
-                const currentLikesCount = likesData[historyId] || 0;
-                const updatedLikes = { ...likesData, [historyId]: currentLikesCount + 1 };
-                await db.collection('likes').doc('data').set(updatedLikes);
+            const handleSendHeartForActiveSong = async () => {
+                if (!activePlayingSong || !activePlayingSong.id) return;
+
+                // Se a música atual veio da fila, criamos um registro dela no histórico ou incrementamos diretamente se já existir.
+                // Como o histórico guarda o que já tocou, vamos verificar se a música ativa atual já tem um documento no histórico ou criamos/procuramos pelo ID.
+                // Para simplificar e garantir precisão imediata, vamos salvar/incrementar um documento no histórico com o ID correspondente da música ativa.
+                const historyRef = db.collection('history').doc(activePlayingSong.id);
+                
+                try {
+                    const docSnap = await historyRef.get();
+                    if (docSnap.exists) {
+                        await historyRef.update({
+                            likes: firebase.firestore.FieldValue.increment(1)
+                        });
+                    } else {
+                        await historyRef.set({
+                            title: activePlayingSong.title,
+                            artist: activePlayingSong.artist,
+                            user: activePlayingSong.user,
+                            phone: activePlayingSong.phone || '',
+                            likes: 1,
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    }
+
+                    // Dispara o coração flutuante localmente para quem clicou também
+                    const newHeartId = Date.now() + Math.random();
+                    setFloatingHearts(prev => [...prev, newHeartId]);
+                    setTimeout(() => {
+                        setFloatingHearts(prev => prev.filter(id => id !== newHeartId));
+                    }, 2500);
+
+                } catch (err) {
+                    console.error("Erro ao registrar curtida:", err);
+                }
             };
 
             const rankedHistory = history.map(item => {
-                const totalLikes = likesData[item.id] || 0;
+                const totalLikes = item.likes || 0;
                 return { ...item, totalLikes };
             }).sort((a, b) => b.totalLikes - a.totalLikes);
 
@@ -811,6 +840,20 @@
             return React.createElement(
                 'div',
                 { className: 'max-w-4xl mx-auto px-4 py-8' },
+                // Container dos corações flutuantes na tela do celular ao clicar
+                React.createElement(
+                    'div',
+                    { className: 'fixed inset-0 pointer-events-none overflow-hidden z-50' },
+                    floatingHearts.map((id, index) => {
+                        const randomLeft = 20 + (index * 23) % 60;
+                        return React.createElement('div', {
+                            key: id,
+                            style: { left: `${randomLeft}%`, bottom: '20%' },
+                            className: 'absolute text-4xl floating-heart filter drop-shadow-lg'
+                        }, '❤️');
+                    })
+                ),
+
                 React.createElement('div', { className: 'w-full h-48 sm:h-72 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl mb-6' }, React.createElement('img', { src: 'banner.jpg', alt: 'Toca do Guerreiro Karaokê', className: 'w-full h-full object-cover object-center' })),
                 
                 // Banner de Música Tocando Agora com Botão de Curtir em Tempo Real
@@ -832,7 +875,7 @@
                     React.createElement(
                         'button',
                         {
-                            onClick: () => handleSendHeart(activePlayingSong.id),
+                            onClick: handleSendHeartForActiveSong,
                             className: 'w-full sm:w-auto bg-red-500 hover:bg-red-600 text-zinc-950 font-extrabold px-6 py-3 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2 text-sm shrink-0'
                         },
                         '❤️ Curtir Performance'
