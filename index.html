@@ -207,9 +207,12 @@
                 const unsubActive = db.collection('settings').doc('activePlaying').onSnapshot(doc => {
                     if (doc.exists) {
                         const newSong = doc.data().song || null;
-                        if (newSong && (!activePlayingSong || activePlayingSong.id !== newSong.id)) {
-                            triggerIntroVinheta(newSong);
-                        } else if (!newSong) {
+                        if (newSong) {
+                            // Se for forçado ou ID diferente, atualiza
+                            if (!activePlayingSong || activePlayingSong.id !== newSong.id || activePlayingSong.embedUrl !== newSong.embedUrl || activePlayingSong.forceTimestamp !== newSong.forceTimestamp) {
+                                triggerIntroVinheta(newSong);
+                            }
+                        } else {
                             setActivePlayingSong(null);
                         }
                     }
@@ -527,7 +530,6 @@
             };
 
             const handlePlayOnTelao = async (song) => {
-                // Pega o link que está na caixinha de input digitada pelo admin ou o que já estava salvo
                 const link = youtubeInputs[song.id] !== undefined ? youtubeInputs[song.id] : (song.youtubeLink || '');
                 if (!link.trim()) {
                     alert('Por favor, cole um link do YouTube válido antes de tocar!');
@@ -541,12 +543,12 @@
                 }
 
                 try {
-                    // Atualiza o link no documento da fila e manda tocar imediatamente no telão
                     await db.collection('queue').doc(song.id).update({ youtubeLink: link.trim() });
                     await db.collection('settings').doc('backgroundSong').set({ song: null });
 
+                    // Força um timestamp único para garantir que o listener do telão detecte a mudança e recarregue o player
                     await db.collection('settings').doc('activePlaying').set({ 
-                        song: { ...song, youtubeLink: link.trim(), embedUrl: embedUrl } 
+                        song: { ...song, youtubeLink: link.trim(), embedUrl: embedUrl, forceTimestamp: Date.now() } 
                     });
                 } catch (error) {
                     console.error("Erro ao reproduzir no telão: ", error);
