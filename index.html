@@ -132,8 +132,25 @@
 
             const handleNextSong = async () => {
                 const currentQueue = queueRef.current;
+                
+                // Se houver uma música ativa atualmente na tela que veio da fila, joga ela pro histórico antes de avançar
+                if (activePlayingSong && activePlayingSong.id && !backgroundSongActive) {
+                    try {
+                        await db.collection('history').add({
+                            title: activePlayingSong.title,
+                            artist: activePlayingSong.artist,
+                            user: activePlayingSong.user,
+                            phone: activePlayingSong.phone || '',
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    } catch (err) {
+                        console.error("Erro ao salvar histórico ao avançar:", err);
+                    }
+                }
+
                 if (currentQueue.length === 0) {
                     await db.collection('settings').doc('activePlaying').set({ song: null });
+                    await db.collection('settings').doc('backgroundSong').set({ song: null });
                     return;
                 }
 
@@ -536,7 +553,6 @@
                         embedUrl: embedUrl
                     };
 
-                    // Força a atualização síncrona no Firestore para o backgroundSong e limpa o activePlaying atual
                     await db.collection('settings').doc('activePlaying').set({ song: null });
                     await db.collection('settings').doc('backgroundSong').set({ song: bgSong });
                     
