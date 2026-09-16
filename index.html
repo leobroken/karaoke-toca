@@ -63,7 +63,6 @@
         }
         const db = firebase.firestore();
 
-        // Gerador de Bips sonoros
         function playBeep(isHigh = false) {
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -89,7 +88,6 @@
             }
         }
 
-        // Som festivo de estrelas (acorde cintilante)
         function playStarSound() {
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -223,6 +221,12 @@
             const currentVideoIdRef = useRef(null);
             const lastSongIdProcessedRef = useRef(null);
 
+            const activePlayingSongRef = useRef(activePlayingSong);
+            useEffect(() => { activePlayingSongRef.current = activePlayingSong; }, [activePlayingSong]);
+
+            const backgroundSongActiveRef = useRef(backgroundSongActive);
+            useEffect(() => { backgroundSongActiveRef.current = backgroundSongActive; }, [backgroundSongActive]);
+
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
                 if (params.get('telao') === 'true') {
@@ -249,14 +253,16 @@
 
             const handleNextSong = async () => {
                 const currentQueue = queueRef.current;
+                const currentActive = activePlayingSongRef.current;
+                const currentBg = backgroundSongActiveRef.current;
                 
-                if (activePlayingSong && activePlayingSong.id && !backgroundSongActive) {
+                if (currentActive && currentActive.id && !currentBg) {
                     try {
                         await db.collection('history').add({
-                            title: activePlayingSong.title,
-                            artist: activePlayingSong.artist,
-                            user: activePlayingSong.user,
-                            phone: activePlayingSong.phone || '',
+                            title: currentActive.title,
+                            artist: currentActive.artist,
+                            user: currentActive.user,
+                            phone: currentActive.phone || '',
                             likes: 0,
                             likedPhones: [],
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -302,7 +308,6 @@
                     setHistory(items);
                 });
 
-                // Escuta global de eventos de corações/comemorações no telão
                 const unsubCelebration = db.collection('settings').doc('celebration').onSnapshot(doc => {
                     if (doc.exists && isTelaoMode) {
                         const data = doc.data();
@@ -481,6 +486,17 @@
                                     } else {
                                         event.target.playVideo();
                                     }
+                                },
+                                'onStateChange': (event) => {
+                                    // Estado 0 significa que o vídeo do YouTube acabou de terminar
+                                    if (event.data === YT.PlayerState.ENDED) {
+                                        if (!backgroundSongActiveRef.current) {
+                                            handleNextSong();
+                                        } else {
+                                            // Se for música de fundo e acabar, reinicia ou limpa
+                                            event.target.playVideo();
+                                        }
+                                    }
                                 }
                             }
                         });
@@ -495,47 +511,6 @@
                 }
 
             }, [isTelaoMode, activePlayingSong, backgroundSongActive]);
-
-            useEffect(() => {
-                if (!isTelaoMode) return;
-
-                if (timerRef.current) clearTimeout(timerRef.current);
-                if (intervalRef.current) clearInterval(intervalRef.current);
-
-                if (autoSkipEnabled && activePlayingSong && (activePlayingSong.videoId || activePlayingSong.youtubeLink)) {
-                    setTimeLeft(300);
-
-                    intervalRef.current = setInterval(() => {
-                        setTimeLeft(prev => {
-                            if (prev <= 1) {
-                                clearInterval(intervalRef.current);
-                                return 0;
-                            }
-                            return prev - 1;
-                        });
-                    }, 1000);
-
-                    timerRef.current = setTimeout(() => {
-                        handleNextSong();
-                    }, 5 * 60 * 1000);
-                } else {
-                    setTimeLeft(300);
-                }
-
-                return () => {
-                    if (timerRef.current) clearTimeout(timerRef.current);
-                    if (intervalRef.current) clearInterval(intervalRef.current);
-                };
-            }, [isTelaoMode, activePlayingSong, autoSkipEnabled]);
-
-            const handleToggleAutoSkip = async () => {
-                const newState = !autoSkipEnabled;
-                try {
-                    await db.collection('settings').doc('autoSkip').set({ enabled: newState });
-                } catch (error) {
-                    console.error("Erro ao alterar Pular Automático: ", error);
-                }
-            };
 
             const handleToggleTelaoPlayPause = async () => {
                 const newMuteState = !isTelaoMutedState;
@@ -851,15 +826,16 @@
             };
 
             const handleSendHeartForActiveSong = async () => {
-                if (!activePlayingSong || !activePlayingSong.id || !user) return;
+                const currentActive = activePlayingSongRef.current;
+                if (!currentActive || !currentActive.id || !user) return;
 
-                if (activePlayingSong.phone && activePlayingSong.phone === user.phone) {
+                if (currentActive.phone && currentActive.phone === user.phone) {
                     alert('Você não pode curtir a sua própria performance! Deixe para os fãs curtirem. 😉');
                     return;
                 }
 
                 const userPhone = user.phone;
-                const historyRef = db.collection('history').doc(activePlayingSong.id);
+                const historyRef = db.collection('history').doc(currentActive.id);
                 
                 try {
                     const docSnap = await historyRef.get();
@@ -878,7 +854,6 @@
                         const oldLikes = data.likes || 0;
                         newLikesCount = oldLikes + 1;
 
-                        // Verifica se cruzou um múltiplo de 3 (3, 6, 9...)
                         if (newLikesCount >= 3 && Math.floor(newLikesCount / 3) > Math.floor(oldLikes / 3)) {
                             shouldTriggerStars = true;
                         }
@@ -889,17 +864,16 @@
                         });
                     } else {
                         await historyRef.set({
-                            title: activePlayingSong.title,
-                            artist: activePlayingSong.artist,
-                            user: activePlayingSong.user,
-                            phone: activePlayingSong.phone || '',
+                            title: currentActive.title,
+                            artist: currentActive.artist,
+                            user: currentActive.user,
+                            phone: currentActive.phone || '',
                             likes: 1,
                             likedPhones: [userPhone],
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
                     }
 
-                    // Dispara o evento global no Firebase para o Telão reproduzir som e animação
                     await db.collection('settings').doc('celebration').set({
                         type: shouldTriggerStars ? 'stars' : 'heart',
                         timestamp: Date.now()
@@ -917,19 +891,12 @@
 
             const topSinger = rankedHistory.length > 0 && rankedHistory[0].totalLikes > 0 ? rankedHistory[0] : null;
 
-            const formatTime = (seconds) => {
-                const mins = Math.floor(seconds / 60);
-                const secs = seconds % 60;
-                return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-            };
-
             if (isTelaoMode) {
                 const currentPlaying = backgroundSongActive || activePlayingSong;
 
                 return React.createElement(
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
-                    // Container de Corações Flutuantes
                     React.createElement(
                         'div',
                         { className: 'absolute inset-0 pointer-events-none overflow-hidden z-40' },
@@ -942,7 +909,6 @@
                             }, '❤️');
                         })
                     ),
-                    // Container de Estrelas e Mensagem Especial "Ta mandando bem! 👏"
                     React.createElement(
                         'div',
                         { className: 'absolute inset-0 pointer-events-none overflow-hidden z-50 flex items-center justify-center' },
@@ -1022,12 +988,7 @@
                     React.createElement(
                         'div',
                         { className: 'absolute bottom-4 right-6 z-10' },
-                        !isTelaoMutedState && autoSkipEnabled && activePlayingSong ? React.createElement(
-                            'div',
-                            { className: 'bg-zinc-900/90 backdrop-blur border border-amber-500/40 text-amber-400 font-bold px-6 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm' },
-                            React.createElement('span', null, '⏳ Próxima música em:'),
-                            React.createElement('span', { className: 'font-mono text-zinc-100 text-base bg-zinc-950 px-2.5 py-1 rounded-lg border border-zinc-800' }, formatTime(timeLeft))
-                        ) : !isTelaoMutedState && React.createElement(
+                        !isTelaoMutedState && React.createElement(
                             'button',
                             {
                                 onClick: backgroundSongActive ? handleStopBackgroundSong : handleNextSong,
@@ -1195,7 +1156,7 @@
                     React.createElement('h3', { className: 'text-amber-400 font-bold text-base flex items-center gap-2' }, '👑 Painel de Administração'),
                     React.createElement(
                         'div',
-                        { className: 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 items-center' },
+                        { className: 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 items-center' },
                         React.createElement('button', {
                             onClick: openTelaoWindow,
                             className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-500/10 text-xs flex items-center justify-center gap-1 text-center'
@@ -1215,15 +1176,7 @@
                         React.createElement('button', {
                             onClick: handleTogglePause,
                             className: `${isPaused ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950' : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40'} font-bold px-3 py-2.5 rounded-xl transition-all text-xs text-center`
-                        }, isPaused ? '▶️ Retomar' : '⏸️ Pausar Pedidos'),
-                        React.createElement(
-                            'button',
-                            {
-                                onClick: handleToggleAutoSkip,
-                                className: `${autoSkipEnabled ? 'bg-emerald-500 text-zinc-950 font-black' : 'bg-zinc-800 text-zinc-400 border border-zinc-700 font-medium'} px-3 py-2.5 rounded-xl transition-all text-xs flex items-center justify-center gap-1 text-center`
-                            },
-                            React.createElement('span', null, autoSkipEnabled ? '⏱️ Pular Auto (ON)' : '⏱️ Pular Auto (OFF)')
-                        )
+                        }, isPaused ? '▶️ Retomar' : '⏸️ Pausar Pedidos')
                     ),
                     React.createElement(
                         'div',
