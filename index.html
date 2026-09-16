@@ -21,6 +21,13 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Poppins', sans-serif; }
+        @keyframes floatUp {
+            0% { transform: translateY(0px) scale(0.8); opacity: 1; }
+            100% { transform: translateY(-400px) scale(1.4); opacity: 0; }
+        }
+        .floating-heart {
+            animation: floatUp 2.5s ease-in-out forwards;
+        }
     </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen">
@@ -81,7 +88,9 @@
             useEffect(() => { queueRef.current = queue; }, [queue]);
 
             const [history, setHistory] = useState([]);
-            const [ratings, setRatings] = useState({});
+            const [likesData, setLikesData] = useState({});
+            const [floatingHearts, setFloatingHearts] = useState([]);
+
             const [isPaused, setIsPaused] = useState(false);
             const [isTelaoMode, setIsTelaoMode] = useState(false);
             const [activePlayingSong, setActivePlayingSong] = useState(null);
@@ -114,7 +123,6 @@
             const [youtubeInputs, setYoutubeInputs] = useState({});
             const [autoSkipEnabled, setAutoSkipEnabled] = useState(false);
 
-            // Gerenciamento de Usuários e Silenciamento
             const [usersList, setUsersList] = useState([]);
             const [mutedPhones, setMutedPhones] = useState({});
             const [showUsersModal, setShowUsersModal] = useState(false);
@@ -192,9 +200,19 @@
                     setHistory(items);
                 });
 
-                const unsubRatings = db.collection('ratings').doc('data').onSnapshot(doc => {
+                const unsubLikes = db.collection('likes').doc('data').onSnapshot(doc => {
                     if (doc.exists) {
-                        setRatings(doc.data() || {});
+                        const data = doc.data() || {};
+                        setLikesData(data);
+                        
+                        // Se houver alteração recente de likes, dispara o coração flutuante no telão
+                        if (isTelaoMode) {
+                            const newHeartId = Date.now() + Math.random();
+                            setFloatingHearts(prev => [...prev, newHeartId]);
+                            setTimeout(() => {
+                                setFloatingHearts(prev => prev.filter(id => id !== newHeartId));
+                            }, 2500);
+                        }
                     }
                 });
 
@@ -247,7 +265,7 @@
                 return () => {
                     unsubQueue();
                     unsubHistory();
-                    unsubRatings();
+                    unsubLikes();
                     unsubSettings();
                     unsubActive();
                     unsubAutoSkip();
@@ -256,7 +274,7 @@
                     unsubUsers();
                     unsubMuted();
                 };
-            }, []);
+            }, [isTelaoMode]);
 
             useEffect(() => {
                 if (queue.length > 0 && backgroundSongActive && !activePlayingSong) {
@@ -517,14 +535,10 @@
                 }
 
                 try {
-                    // Atualiza no banco da fila
                     await db.collection('queue').doc(song.id).update({ youtubeLink: link.trim() });
                     await db.collection('settings').doc('backgroundSong').set({ song: null });
-
-                    // Zera primeiro para forçar o player a reiniciar
                     await db.collection('settings').doc('activePlaying').set({ song: null });
 
-                    // Pequeno intervalo e envia o novo activePlaying com força total
                     setTimeout(async () => {
                         await db.collection('settings').doc('activePlaying').set({ 
                             song: { 
@@ -595,12 +609,12 @@
             };
 
             const handleResetNotes = async () => {
-                if (confirm('Deseja realmente zerar o histórico e as notas das músicas tocadas?')) {
+                if (confirm('Deseja realmente zerar o histórico e os corações recebidos?')) {
                     const batch = db.batch();
                     history.forEach(item => {
                         batch.delete(db.collection('history').doc(item.id));
                     });
-                    batch.set(db.collection('ratings').doc('data'), {});
+                    batch.set(db.collection('likes').doc('data'), {});
                     await batch.commit();
                 }
             };
@@ -614,22 +628,18 @@
                 window.open(window.location.pathname + '?telao=true', '_blank');
             };
 
-            const handleRate = async (historyId, stars) => {
-                const currentSongRatings = ratings[historyId] || {};
-                const updatedSongRatings = { ...currentSongRatings, [user.phone]: stars };
-                const newRatings = { ...ratings, [historyId]: updatedSongRatings };
-                
-                await db.collection('ratings').doc('data').set(newRatings);
+            const handleSendHeart = async (historyId) => {
+                const currentLikesCount = likesData[historyId] || 0;
+                const updatedLikes = { ...likesData, [historyId]: currentLikesCount + 1 };
+                await db.collection('likes').doc('data').set(updatedLikes);
             };
 
             const rankedHistory = history.map(item => {
-                const itemRatings = ratings[item.id] || {};
-                const values = Object.values(itemRatings);
-                const avg = values.length > 0 ? (values.reduce((a, b) => a + b, 0) / values.length) : 0;
-                return { ...item, avgRating: avg, totalVotes: values.length };
-            }).sort((a, b) => b.avgRating - a.avgRating || b.totalVotes - a.totalVotes);
+                const totalLikes = likesData[item.id] || 0;
+                return { ...item, totalLikes };
+            }).sort((a, b) => b.totalLikes - a.totalLikes);
 
-            const topSinger = rankedHistory.length > 0 && rankedHistory[0].avgRating > 0 ? rankedHistory[0] : null;
+            const topSinger = rankedHistory.length > 0 && rankedHistory[0].totalLikes > 0 ? rankedHistory[0] : null;
 
             const formatTime = (seconds) => {
                 const mins = Math.floor(seconds / 60);
@@ -642,7 +652,20 @@
 
                 return React.createElement(
                     'div',
-                    { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none' },
+                    { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
+                    // Container dos corações flutuantes no telão
+                    React.createElement(
+                        'div',
+                        { className: 'absolute inset-0 pointer-events-none overflow-hidden z-40' },
+                        floatingHearts.map((id, index) => {
+                            const randomLeft = 10 + (index * 17) % 80;
+                            return React.createElement('div', {
+                                key: id,
+                                style: { left: `${randomLeft}%`, bottom: '10%' },
+                                className: 'absolute text-5xl sm:text-7xl floating-heart filter drop-shadow-lg'
+                            }, '❤️');
+                        })
+                    ),
                     introCountdown ? React.createElement(
                         'div',
                         { className: 'absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center z-50 p-6 text-center' },
@@ -673,7 +696,7 @@
                         React.createElement('span', { className: 'bg-amber-500 text-zinc-950 font-black px-4 py-1.5 rounded-xl text-sm shadow-lg shadow-amber-500/20 uppercase tracking-wider' }, '🖥️ Telão Toca do Guerreiro'),
                         currentPlaying && !isTelaoMutedState && React.createElement(
                             'span',
-                            { className: 'bg-zinc-900 border border-zinc-800 text-zinc-300 px-4 py-1.5 rounded-xl text-sm font-bold' },
+                            { className: 'bg-zinc-900 border border-zinc-800 text-zinc-300 px-4 py-1.5 rounded-xl text-sm font-bold flex items-center gap-2' },
                             backgroundSongActive ? React.createElement('span', { className: 'text-emerald-400' }, '🎵 Tocando som ambiente / fundo do bar') : React.createElement(
                                 'span',
                                 null,
@@ -789,6 +812,33 @@
                 'div',
                 { className: 'max-w-4xl mx-auto px-4 py-8' },
                 React.createElement('div', { className: 'w-full h-48 sm:h-72 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl mb-6' }, React.createElement('img', { src: 'banner.jpg', alt: 'Toca do Guerreiro Karaokê', className: 'w-full h-full object-cover object-center' })),
+                
+                // Banner de Música Tocando Agora com Botão de Curtir em Tempo Real
+                activePlayingSong && React.createElement(
+                    'div',
+                    { className: 'bg-gradient-to-r from-red-500/20 via-amber-500/10 to-zinc-900 border border-red-500/40 rounded-2xl p-5 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl' },
+                    React.createElement(
+                        'div',
+                        { className: 'flex items-center gap-4 text-center sm:text-left' },
+                        React.createElement('div', { className: 'w-14 h-14 rounded-2xl bg-red-500 text-zinc-950 flex items-center justify-center text-3xl font-black shrink-0 shadow-lg shadow-red-500/30 animate-pulse' }, '🎤'),
+                        React.createElement(
+                            'div',
+                            null,
+                            React.createElement('span', { className: 'text-xs font-bold text-red-400 uppercase tracking-widest block' }, 'Tocando Agora no Telão'),
+                            React.createElement('h3', { className: 'text-lg sm:text-xl font-extrabold text-zinc-100' }, `${activePlayingSong.title} - ${activePlayingSong.artist}`),
+                            React.createElement('p', { className: 'text-xs text-zinc-400' }, `Cantor(a): ${activePlayingSong.user}`)
+                        )
+                    ),
+                    React.createElement(
+                        'button',
+                        {
+                            onClick: () => handleSendHeart(activePlayingSong.id),
+                            className: 'w-full sm:w-auto bg-red-500 hover:bg-red-600 text-zinc-950 font-extrabold px-6 py-3 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2 text-sm shrink-0'
+                        },
+                        '❤️ Curtir Performance'
+                    )
+                ),
+
                 React.createElement(
                     'div',
                     { className: 'bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-zinc-900 border border-amber-500/40 rounded-2xl p-4 sm:p-5 mb-6 flex items-center gap-4 shadow-xl shadow-amber-500/5' },
@@ -796,7 +846,7 @@
                     React.createElement(
                         'div',
                         { className: 'flex-1 min-w-0' },
-                        React.createElement('span', { className: 'text-[11px] font-bold text-amber-400 uppercase tracking-widest block' }, 'Destaque da Noite'),
+                        React.createElement('span', { className: 'text-[11px] font-bold text-amber-400 uppercase tracking-widest block' }, 'Destaque da Noite (Mais Curtido)'),
                         topSinger ? React.createElement(
                             'div',
                             { className: 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mt-0.5' },
@@ -806,8 +856,8 @@
                                 React.createElement('h3', { className: 'text-lg sm:text-xl font-extrabold text-zinc-100 truncate' }, topSinger.user),
                                 React.createElement('p', { className: 'text-xs text-zinc-400 truncate' }, `${topSinger.title} - ${topSinger.artist}`)
                             ),
-                            React.createElement('div', { className: 'self-start sm:self-auto bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold px-3 py-1 rounded-xl' }, `★ ${topSinger.avgRating.toFixed(1)} (${topSinger.totalVotes} votos)`)
-                        ) : React.createElement('p', { className: 'text-sm text-zinc-400 mt-0.5' }, 'Ainda sem avaliações. Seja o primeiro a brilhar no topo!')
+                            React.createElement('div', { className: 'self-start sm:self-auto bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold px-3 py-1 rounded-xl' }, `❤️ ${topSinger.totalLikes} corações`)
+                        ) : React.createElement('p', { className: 'text-sm text-zinc-400 mt-0.5' }, 'Ainda sem corações. Curta as apresentações para colocar alguém no topo!')
                     )
                 ),
                 React.createElement(
@@ -891,7 +941,7 @@
                         React.createElement('button', {
                             onClick: handleResetNotes,
                             className: 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold px-3 py-2 rounded-xl transition-all text-xs'
-                        }, '🗑️ Zerar Notas e Histórico')
+                        }, '🗑️ Zerar Corações e Histórico')
                     ),
                     React.createElement(
                         'div',
@@ -1081,25 +1131,21 @@
                             'div',
                             { className: 'bg-zinc-900 border border-zinc-800 rounded-2xl p-6' },
                             React.createElement('h3', { className: 'text-lg font-bold text-zinc-100 mb-1' }, 'Ranking de Performances'),
-                            React.createElement('p', { className: 'text-xs text-zinc-400 mb-4' }, 'Avalie de 1 a 5 estrelas as apresentações que já aconteceram!'),
+                            React.createElement('p', { className: 'text-xs text-zinc-400 mb-4' }, 'Veja as músicas que já tocaram e quantos corações receberam!'),
                             rankedHistory.length === 0 ? React.createElement('div', { className: 'text-center py-8 text-zinc-500 text-sm border border-dashed border-zinc-800 rounded-xl' }, 'Nenhuma música tocada ainda.') : React.createElement(
                                 'div',
                                 { className: 'space-y-3' },
                                 rankedHistory.map((item, index) => {
-                                    const userRating = (ratings[item.id] || {})[user.phone] || 0;
-                                    const isOwner = item.phone === user.phone;
-
                                     return React.createElement(
                                         'div',
-                                        { key: item.id, className: 'bg-zinc-950 border border-zinc-800/80 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4' },
+                                        { key: item.id, className: 'bg-zinc-950 border border-zinc-800/80 p-4 rounded-xl flex items-center justify-between gap-4' },
                                         React.createElement(
                                             'div',
                                             null,
                                             React.createElement(
                                                 'div',
                                                 { className: 'flex items-center gap-2' },
-                                                React.createElement('span', { className: 'text-xs font-bold text-amber-500' }, `#${index + 1} no Ranking`),
-                                                item.avgRating > 0 && React.createElement('span', { className: 'bg-amber-500/10 text-amber-400 text-xs font-semibold px-2 py-0.5 rounded border border-amber-500/20' }, `★ ${item.avgRating.toFixed(1)} (${item.totalVotes} ${item.totalVotes === 1 ? 'voto' : 'votos'})`)
+                                                React.createElement('span', { className: 'text-xs font-bold text-amber-500' }, `#${index + 1} no Ranking`)
                                             ),
                                             React.createElement('h4', { className: 'font-bold text-zinc-100 text-sm mt-1' }, `${item.title} - ${item.artist}`),
                                             React.createElement(
@@ -1111,17 +1157,9 @@
                                         ),
                                         React.createElement(
                                             'div',
-                                            null,
-                                            isOwner ? React.createElement('span', { className: 'bg-zinc-900 text-zinc-500 text-[11px] font-medium px-3 py-2 rounded-xl border border-zinc-800 block text-center' }, 'Você não pode votar na sua música') : React.createElement(
-                                                'div',
-                                                { className: 'flex items-center gap-1 bg-zinc-900 px-3 py-2 rounded-xl border border-zinc-800 self-start sm:self-auto' },
-                                                React.createElement('span', { className: 'text-[10px] text-zinc-400 mr-1 font-medium' }, 'Sua nota:'),
-                                                [1, 2, 3, 4, 5].map((star) => React.createElement('button', {
-                                                    key: star,
-                                                    onClick: () => handleRate(item.id, star),
-                                                    className: `text-base transition-transform hover:scale-125 ${star <= userRating ? 'text-amber-400' : 'text-zinc-700'}`
-                                                }, '★'))
-                                            )
+                                            { className: 'bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5' },
+                                            React.createElement('span', null, '❤️'),
+                                            React.createElement('span', null, `${item.totalLikes} ${item.totalLikes === 1 ? 'coração' : 'corações'}`)
                                         )
                                     );
                                 })
