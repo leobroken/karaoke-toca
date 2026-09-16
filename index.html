@@ -392,12 +392,12 @@
                 if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
                     if (currentVideoIdRef.current !== videoId || (currentPlaying && currentPlaying.timestamp)) {
                         currentVideoIdRef.current = videoId;
+                        ytPlayerRef.current.loadVideoById(videoId);
+                        ytPlayerRef.current.unMute();
                         if (backgroundSongActive || !activePlayingSong) {
-                            ytPlayerRef.current.loadVideoById(videoId);
-                            ytPlayerRef.current.unMute();
                             ytPlayerRef.current.playVideo();
                         } else {
-                            ytPlayerRef.current.cueVideoById(videoId); // Aguarda o fim da contagem regressiva para dar play
+                            // Se for pedido de cliente recém-carregado via "Tocar Novamente", o useEffect da contagem vai cuidar de disparar o play após os 3 bips
                         }
                     }
                     return;
@@ -692,6 +692,12 @@
                     await db.collection('settings').doc('backgroundSong').set({ song: null });
                     await db.collection('settings').doc('activePlaying').set({ song: null });
 
+                    // Força imediata do player local caso o painel admin e o telão estejam na mesma aba/janela
+                    if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+                        ytPlayerRef.current.loadVideoById(videoId);
+                        ytPlayerRef.current.unMute();
+                    }
+
                     setTimeout(async () => {
                         await db.collection('settings').doc('activePlaying').set({ 
                             song: { 
@@ -705,7 +711,7 @@
                                 timestamp: Date.now() 
                             } 
                         });
-                    }, 200);
+                    }, 100);
 
                 } catch (error) {
                     console.error("Erro ao reproduzir no telão: ", error);
@@ -735,6 +741,12 @@
                     await db.collection('settings').doc('activePlaying').set({ song: null });
                     await db.collection('settings').doc('backgroundSong').set({ song: bgSong });
                     
+                    if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+                        ytPlayerRef.current.loadVideoById(videoId);
+                        ytPlayerRef.current.unMute();
+                        ytPlayerRef.current.playVideo();
+                    }
+
                     setBackgroundLinkInput('');
                     alert('Música de fundo ativada no telão! Ela sairá automaticamente quando chegar um pedido na fila 🎵');
                 } catch (error) {
