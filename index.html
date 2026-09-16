@@ -88,6 +88,7 @@
             
             const [backgroundLinkInput, setBackgroundLinkInput] = useState('');
             const [backgroundSongActive, setBackgroundSongActive] = useState(null);
+            const [isTelaoMutedState, setIsTelaoMutedState] = useState(false);
 
             const [introCountdown, setIntroCountdown] = useState(null);
             const introTimerRef = useRef(null);
@@ -226,6 +227,12 @@
                     }
                 });
 
+                const unsubTelaoMute = db.collection('settings').doc('telaoMute').onSnapshot(doc => {
+                    if (doc.exists) {
+                        setIsTelaoMutedState(doc.data().muted || false);
+                    }
+                });
+
                 const unsubUsers = db.collection('users').onSnapshot(snapshot => {
                     const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setUsersList(items);
@@ -245,6 +252,7 @@
                     unsubActive();
                     unsubAutoSkip();
                     unsubBg();
+                    unsubTelaoMute();
                     unsubUsers();
                     unsubMuted();
                 };
@@ -326,6 +334,15 @@
                     await db.collection('settings').doc('autoSkip').set({ enabled: newState });
                 } catch (error) {
                     console.error("Erro ao alterar Pular Automático: ", error);
+                }
+            };
+
+            const handleToggleTelaoPlayPause = async () => {
+                const newMuteState = !isTelaoMutedState;
+                try {
+                    await db.collection('settings').doc('telaoMute').set({ muted: newMuteState });
+                } catch (error) {
+                    console.error("Erro ao alterar estado do telão: ", error);
                 }
             };
 
@@ -635,7 +652,7 @@
                         'div',
                         { className: 'absolute top-4 left-6 flex items-center gap-3 z-10' },
                         React.createElement('span', { className: 'bg-amber-500 text-zinc-950 font-black px-4 py-1.5 rounded-xl text-sm shadow-lg shadow-amber-500/20 uppercase tracking-wider' }, '🖥️ Telão Toca do Guerreiro'),
-                        currentPlaying && React.createElement(
+                        currentPlaying && !isTelaoMutedState && React.createElement(
                             'span',
                             { className: 'bg-zinc-900 border border-zinc-800 text-zinc-300 px-4 py-1.5 rounded-xl text-sm font-bold' },
                             backgroundSongActive ? React.createElement('span', { className: 'text-emerald-400' }, '🎵 Tocando som ambiente / fundo do bar') : React.createElement(
@@ -654,7 +671,12 @@
                     React.createElement(
                         'div',
                         { className: 'w-full max-w-5xl aspect-video bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center relative' },
-                        currentPlaying && currentPlaying.embedUrl ? React.createElement('iframe', {
+                        isTelaoMutedState ? React.createElement(
+                            'div',
+                            { className: 'text-center p-8' },
+                            React.createElement('h2', { className: 'text-3xl font-extrabold text-amber-500 mb-2' }, '⏸️ Música Pausada pelo Administrador'),
+                            React.createElement('p', { className: 'text-zinc-400 text-base' }, 'O telão está pausado no momento.')
+                        ) : (currentPlaying && currentPlaying.embedUrl ? React.createElement('iframe', {
                             className: 'w-full h-full border-0',
                             src: currentPlaying.embedUrl,
                             title: 'Media Player',
@@ -665,17 +687,17 @@
                             { className: 'text-center p-8' },
                             React.createElement('h2', { className: 'text-3xl font-extrabold text-amber-500 mb-2' }, 'Aguardando Próxima Música...'),
                             React.createElement('p', { className: 'text-zinc-400 text-base' }, 'Peça uma música ou adicione uma música de fundo no Painel Admin 🎤')
-                        )
+                        ))
                     ),
                     React.createElement(
                         'div',
                         { className: 'absolute bottom-4 right-6 z-10' },
-                        autoSkipEnabled && activePlayingSong ? React.createElement(
+                        !isTelaoMutedState && autoSkipEnabled && activePlayingSong ? React.createElement(
                             'div',
                             { className: 'bg-zinc-900/90 backdrop-blur border border-amber-500/40 text-amber-400 font-bold px-6 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm' },
                             React.createElement('span', null, '⏳ Próxima música em:'),
                             React.createElement('span', { className: 'font-mono text-zinc-100 text-base bg-zinc-950 px-2.5 py-1 rounded-lg border border-zinc-800' }, formatTime(timeLeft))
-                        ) : React.createElement(
+                        ) : !isTelaoMutedState && React.createElement(
                             'button',
                             {
                                 onClick: backgroundSongActive ? handleStopBackgroundSong : handleNextSong,
@@ -819,6 +841,10 @@
                             onClick: openTelaoWindow,
                             className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2 text-sm'
                         }, '🖥️ Abrir Modo Telão'),
+                        React.createElement('button', {
+                            onClick: handleToggleTelaoPlayPause,
+                            className: `${isTelaoMutedState ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950' : 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40'} font-bold px-5 py-3 rounded-xl transition-all text-sm`
+                        }, isTelaoMutedState ? '▶️ Tocar música do telão' : '⏸️ Parar música do telão'),
                         React.createElement('button', {
                             onClick: () => setShowUsersModal(true),
                             className: 'bg-sky-500 hover:bg-sky-600 text-zinc-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-sky-500/20 flex items-center gap-2 text-sm'
