@@ -18,6 +18,8 @@
     <!-- Firebase SDKs (Compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <!-- YouTube Iframe API -->
+    <script src="https://www.youtube.com/iframe_api"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Poppins', sans-serif; }
@@ -50,7 +52,7 @@
         }
         const db = firebase.firestore();
 
-        function getYouTubeEmbedUrl(url) {
+        function getYouTubeVideoId(url) {
             if (!url) return '';
             let videoId = '';
             if (url.includes('youtu.be/')) {
@@ -62,7 +64,7 @@
             } else {
                 videoId = url;
             }
-            return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1` : '';
+            return videoId;
         }
 
         function App() {
@@ -134,6 +136,10 @@
             const timerRef = useRef(null);
             const intervalRef = useRef(null);
 
+            // Referência para o player do YouTube no Telão
+            const ytPlayerRef = useRef(null);
+            const currentVideoIdRef = useRef(null);
+
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
                 if (params.get('telao') === 'true') {
@@ -190,10 +196,10 @@
 
                     const nextSong = currentQueue.length > 1 ? currentQueue[1] : null;
                     if (nextSong && nextSong.youtubeLink) {
-                        const embedUrl = getYouTubeEmbedUrl(nextSong.youtubeLink);
+                        const videoId = getYouTubeVideoId(nextSong.youtubeLink);
                         await db.collection('settings').doc('backgroundSong').set({ song: null });
                         await db.collection('settings').doc('activePlaying').set({ 
-                            song: { ...nextSong, embedUrl: embedUrl } 
+                            song: { ...nextSong, videoId: videoId } 
                         });
                     } else {
                         await db.collection('settings').doc('activePlaying').set({ song: null });
@@ -212,7 +218,6 @@
                 const unsubHistory = db.collection('history').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
                     const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     
-                    // Compara com o histórico anterior para disparar o coração flutuante no telão em tempo real
                     const currentHistory = historyRef.current;
                     if (isTelaoMode && currentHistory.length > 0) {
                         items.forEach(newItem => {
@@ -257,7 +262,16 @@
 
                 const unsubTelaoMute = db.collection('settings').doc('telaoMute').onSnapshot(doc => {
                     if (doc.exists) {
-                        setIsTelaoMutedState(doc.data().muted || false);
+                        const muted = doc.data().muted || false;
+                        setIsTelaoMutedState(muted);
+                        // Controla a API do YouTube em tempo real quando o admin pausa/despausa
+                        if (ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === 'function' && typeof ytPlayerRef.current.playVideo === 'function') {
+                            if (muted) {
+                                ytPlayerRef.current.pauseVideo();
+                            } else {
+                                ytPlayerRef.current.playVideo();
+                            }
+                        }
                     }
                 });
 
@@ -289,16 +303,73 @@
                 if (queue.length > 0 && backgroundSongActive && !activePlayingSong) {
                     const firstSong = queue[0];
                     if (firstSong.youtubeLink) {
-                        const embedUrl = getYouTubeEmbedUrl(firstSong.youtubeLink);
-                        if (embedUrl) {
+                        const videoId = getYouTubeVideoId(firstSong.youtubeLink);
+                        if (videoId) {
                             db.collection('settings').doc('backgroundSong').set({ song: null });
                             db.collection('settings').doc('activePlaying').set({ 
-                                song: { ...firstSong, embedUrl: embedUrl } 
+                                song: { ...firstSong, videoId: videoId } 
                             });
                         }
                     }
                 }
             }, [queue, backgroundSongActive, activePlayingSong]);
+
+            // Sincronização e criação do Player do YouTube no Telão
+            useEffect(() => {
+                if (!isTelaoMode) return;
+                const currentPlaying = backgroundSongActive || activePlayingSong;
+                const videoId = currentPlaying ? (currentPlaying.videoId || getYouTubeVideoId(currentPlaying.youtubeLink)) : null;
+
+                if (!videoId) {
+                    if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+                        ytPlayerRef.current.destroy();
+                        ytPlayerRef.current = null;
+                    }
+                    currentVideoIdRef.current = null;
+                    return;
+                }
+
+                if (currentVideoIdRef.current === videoId && ytPlayerRef.current) {
+                    return;
+                }
+
+                currentVideoIdRef.current = videoId;
+
+                const initPlayer = () => {
+                    if (window.YT && window.YT.Player) {
+                        if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+                            try { ytPlayerRef.current.destroy(); } catch(e){}
+                        }
+                        ytPlayerRef.current = new YT.Player('youtube-player-container', {
+                            height: '100%',
+                            width: '100%',
+                            videoId: videoId,
+                            playerVars: {
+                                'autoplay': 1,
+                                'enablejsapi': 1,
+                                'controls': 1
+                            },
+                            events: {
+                                'onReady': (event) => {
+                                    if (isTelaoMutedState) {
+                                        event.target.pauseVideo();
+                                    } else {
+                                        event.target.playVideo();
+                                    }
+                                }
+                            }
+                        });
+                    }
+                };
+
+                if (!window.YT || !window.YT.Player) {
+                    window.onYouTubeIframeAPIReady = initPlayer;
+                    setTimeout(initPlayer, 1000);
+                } else {
+                    initPlayer();
+                }
+
+            }, [isTelaoMode, activePlayingSong, backgroundSongActive]);
 
             useEffect(() => {
                 if (!isTelaoMode) return;
@@ -306,7 +377,7 @@
                 if (timerRef.current) clearTimeout(timerRef.current);
                 if (intervalRef.current) clearInterval(intervalRef.current);
 
-                if (autoSkipEnabled && activePlayingSong && activePlayingSong.embedUrl) {
+                if (autoSkipEnabled && activePlayingSong && (activePlayingSong.videoId || activePlayingSong.youtubeLink)) {
                     setTimeLeft(300);
 
                     intervalRef.current = setInterval(() => {
@@ -458,24 +529,23 @@
                 }
 
                 try {
+                    const videoId = songYoutubeLink.trim() ? getYouTubeVideoId(songYoutubeLink.trim()) : '';
                     const songData = {
                         title: songTitle.trim(),
                         artist: songArtist.trim(),
                         user: user.name,
                         phone: user.phone,
                         youtubeLink: songYoutubeLink.trim(),
+                        videoId: videoId,
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
 
                     const docRef = await db.collection('queue').add(songData);
                     
-                    if (!activePlayingSong && !backgroundSongActive && songYoutubeLink.trim()) {
-                        const embedUrl = getYouTubeEmbedUrl(songYoutubeLink.trim());
-                        if (embedUrl) {
-                            await db.collection('settings').doc('activePlaying').set({ 
-                                song: { id: docRef.id, ...songData, embedUrl: embedUrl } 
-                            });
-                        }
+                    if (!activePlayingSong && !backgroundSongActive && videoId) {
+                        await db.collection('settings').doc('activePlaying').set({ 
+                            song: { id: docRef.id, ...songData } 
+                        });
                     }
 
                     setSongTitle('');
@@ -519,9 +589,11 @@
                     return;
                 }
 
+                const videoId = getYouTubeVideoId(linkToSave.trim());
                 try {
                     await db.collection('queue').doc(songId).update({
-                        youtubeLink: linkToSave.trim()
+                        youtubeLink: linkToSave.trim(),
+                        videoId: videoId
                     });
                     alert('Link salvo com sucesso e sincronizado para todos os administradores! 💾');
                 } catch (error) {
@@ -537,14 +609,14 @@
                     return;
                 }
 
-                const embedUrl = getYouTubeEmbedUrl(link);
-                if (!embedUrl) {
+                const videoId = getYouTubeVideoId(link);
+                if (!videoId) {
                     alert('Link do YouTube inválido. Verifique o endereço copiado.');
                     return;
                 }
 
                 try {
-                    await db.collection('queue').doc(song.id).update({ youtubeLink: link.trim() });
+                    await db.collection('queue').doc(song.id).update({ youtubeLink: link.trim(), videoId: videoId });
                     await db.collection('settings').doc('backgroundSong').set({ song: null });
                     await db.collection('settings').doc('activePlaying').set({ song: null });
 
@@ -557,7 +629,7 @@
                                 user: song.user,
                                 phone: song.phone || '',
                                 youtubeLink: link.trim(), 
-                                embedUrl: embedUrl,
+                                videoId: videoId,
                                 timestamp: Date.now() 
                             } 
                         });
@@ -572,8 +644,8 @@
                 e.preventDefault();
                 if (!backgroundLinkInput.trim()) return;
 
-                const embedUrl = getYouTubeEmbedUrl(backgroundLinkInput.trim());
-                if (!embedUrl) {
+                const videoId = getYouTubeVideoId(backgroundLinkInput.trim());
+                if (!videoId) {
                     alert('Link do YouTube inválido.');
                     return;
                 }
@@ -583,7 +655,8 @@
                         title: 'Música de Fundo / Ambiente',
                         artist: 'Bar Toca do Guerreiro',
                         user: 'Administração',
-                        embedUrl: embedUrl
+                        videoId: videoId,
+                        youtubeLink: backgroundLinkInput.trim()
                     };
 
                     await db.collection('settings').doc('activePlaying').set({ song: null });
@@ -755,23 +828,21 @@
                     React.createElement(
                         'div',
                         { className: 'w-full max-w-5xl aspect-video bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center relative' },
-                        isTelaoMutedState ? React.createElement(
+                        // Elemento onde o player do YouTube via API será injetado
+                        React.createElement('div', { id: 'youtube-player-container', className: 'w-full h-full' }),
+                        !currentPlaying && React.createElement(
                             'div',
-                            { className: 'text-center p-8' },
-                            React.createElement('h2', { className: 'text-3xl font-extrabold text-amber-500 mb-2' }, '⏸️ Música Pausada pelo Administrador'),
-                            React.createElement('p', { className: 'text-zinc-400 text-base' }, 'O telão está pausado no momento.')
-                        ) : (currentPlaying && currentPlaying.embedUrl ? React.createElement('iframe', {
-                            className: 'w-full h-full border-0',
-                            src: currentPlaying.embedUrl,
-                            title: 'Media Player',
-                            allow: 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture',
-                            allowFullScreen: true
-                        }) : React.createElement(
-                            'div',
-                            { className: 'text-center p-8' },
+                            { className: 'absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-zinc-900' },
                             React.createElement('h2', { className: 'text-3xl font-extrabold text-amber-500 mb-2' }, 'Aguardando Próxima Música...'),
                             React.createElement('p', { className: 'text-zinc-400 text-base' }, 'Peça uma música ou adicione uma música de fundo no Painel Admin 🎤')
-                        ))
+                        ),
+                        // Cortina de pausa por cima do player (o vídeo fica pausado nos bastidores no ponto exato)
+                        isTelaoMutedState && React.createElement(
+                            'div',
+                            { className: 'absolute inset-0 bg-zinc-950/95 backdrop-blur-md flex flex-col items-center justify-center z-30 p-6 text-center' },
+                            React.createElement('h2', { className: 'text-3xl sm:text-4xl font-extrabold text-amber-500 mb-2' }, '⏸️ Música Pausada pelo Administrador'),
+                            React.createElement('p', { className: 'text-zinc-400 text-base' }, 'O telão está pausado. Ao retomar, o vídeo continuará exatamente de onde parou!')
+                        )
                     ),
                     React.createElement(
                         'div',
