@@ -135,13 +135,23 @@
         async function fetchYouTubeApiLink(title, artist) {
             if (!YOUTUBE_API_KEY) return "";
             try {
-                const query = encodeURIComponent(`${title} ${artist} karaoke instrumental -live -cover`);
-                const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=5&q=${query}&type=video&videoEmbeddable=true&key=${YOUTUBE_API_KEY}`;
+                // Termos focados estritamente em karaokê com letra e instrumental, evitando clipes oficiais
+                const query = encodeURIComponent(`${title} ${artist} karaoke instrumental com letra legendado -live -clip -ao-vivo`);
+                const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=8&q=${query}&type=video&videoEmbeddable=true&key=${YOUTUBE_API_KEY}`;
                 const response = await fetch(url);
                 const data = await response.json();
                 
                 if (data.items && data.items.length > 0) {
-                    const videoId = data.items[0].id.videoId;
+                    // Tenta achar o primeiro que contenha termos de karaokê no título para garantir precisão
+                    let selectedItem = data.items[0];
+                    for (let item of data.items) {
+                        const t = (item.snippet.title || '').toLowerCase();
+                        if (t.includes('karaoke') || t.includes('karaokê') || t.includes('instrumental') || t.includes('com letra')) {
+                            selectedItem = item;
+                            break;
+                        }
+                    }
+                    const videoId = selectedItem.id.videoId;
                     return `https://www.youtube.com/watch?v=${videoId}`;
                 }
             } catch (e) {
@@ -151,13 +161,11 @@
         }
 
         function App() {
-            // Gerenciamento de sessão com duração de 24 horas e trava de dispositivo
             const [user, setUser] = useState(() => {
                 const saved = localStorage.getItem('toca_karaoke_user');
                 if (saved) {
                     try {
                         const data = JSON.parse(saved);
-                        // 24 horas de validade (24 * 60 * 60 * 1000)
                         if (new Date().getTime() - data.timestamp < 24 * 60 * 60 * 1000) {
                             return data;
                         }
@@ -166,7 +174,6 @@
                 return null;
             });
 
-            // Verifica se o aparelho possui um usuário travado nas últimas 24h (mesmo após clicar em sair)
             const [lockedDeviceUser, setLockedDeviceUser] = useState(() => {
                 const locked = localStorage.getItem('toca_karaoke_locked_device');
                 if (locked) {
@@ -279,7 +286,7 @@
                             user: currentActive.user,
                             phone: currentActive.phone || '',
                             reactions: { '😲': 0, '❤️': 0, '👍': 0, '🥱': 0, '😂': 0 },
-                            reactedUsers: {}, // Salva quais telefones usaram quais emojis
+                            reactedUsers: {},
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
                     } catch (err) {
@@ -579,7 +586,6 @@
                 const nameFormatted = inputName.trim();
                 const phoneFormatted = inputPhone.trim();
 
-                // Se houver trava de dispositivo anterior e divergir, impede
                 if (lockedDeviceUser) {
                     if (lockedDeviceUser.phone.replace(/\D/g, '') !== phoneFormatted.replace(/\D/g, '')) {
                         alert(`Este aparelho está vinculado por 24h ao usuário "${lockedDeviceUser.name}" (${lockedDeviceUser.phone}). Você deve entrar com os mesmos dados.`);
@@ -699,7 +705,7 @@
 
                     setSongTitle('');
                     setSongArtist('');
-                    alert('Música encontrada e enviada para o telão com sucesso! 🎤');
+                    alert('Versão karaokê encontrada e enviada para o telão com sucesso! 🎤');
                 } catch (error) {
                     console.error("Erro ao adicionar música: ", error);
                     alert('Erro ao processar o pedido. Tente novamente.');
@@ -891,10 +897,9 @@
 
                     if (docSnap.exists) {
                         const data = docSnap.data();
-                        const reactedUsers = data.reactedUsers || {}; // Formato: { "telefone": ["❤️", "👍"] }
+                        const reactedUsers = data.reactedUsers || {};
                         const userEmojis = reactedUsers[userPhone] || [];
 
-                        // Garante que o usuário pode usar cada emoji apenas uma vez
                         if (userEmojis.includes(emojiSymbol)) {
                             alert(`Você já utilizou o emoji ${emojiSymbol} nesta performance! Cada emoji pode ser usado uma única vez por música.`);
                             return;
@@ -1336,7 +1341,7 @@
                                     type: 'submit',
                                     disabled: isSearchingAuto,
                                     className: 'w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-zinc-950 font-bold py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 text-sm flex items-center justify-center gap-2 mt-2'
-                                }, isSearchingAuto ? React.createElement('span', null, '🔍 Buscando link exato no YouTube...') : 'Pedir para o Telão 🎤')
+                                }, isSearchingAuto ? React.createElement('span', null, '🔍 Buscando karaokê exato no YouTube...') : 'Pedir para o Telão 🎤')
                             )
                         )
                     ),
