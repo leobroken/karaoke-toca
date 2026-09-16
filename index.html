@@ -27,7 +27,7 @@
             0% { transform: translateY(0px) scale(0.8); opacity: 1; }
             100% { transform: translateY(-400px) scale(1.4); opacity: 0; }
         }
-        .floating-heart {
+        .floating-emoji {
             animation: floatUp 2.5s ease-in-out forwards;
         }
         @keyframes popUpMessage {
@@ -135,8 +135,8 @@
         async function fetchYouTubeApiLink(title, artist) {
             if (!YOUTUBE_API_KEY) return "";
             try {
-                const query = encodeURIComponent(`${title} ${artist} karaoke instrumental`);
-                const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${query}&type=video&key=${YOUTUBE_API_KEY}`;
+                const query = encodeURIComponent(`${title} ${artist} karaoke instrumental -live -cover`);
+                const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=5&q=${query}&type=video&videoEmbeddable=true&key=${YOUTUBE_API_KEY}`;
                 const response = await fetch(url);
                 const data = await response.json();
                 
@@ -151,19 +151,38 @@
         }
 
         function App() {
+            // Gerenciamento de sessão com duração de 24 horas e trava de dispositivo
             const [user, setUser] = useState(() => {
                 const saved = localStorage.getItem('toca_karaoke_user');
                 if (saved) {
-                    const data = JSON.parse(saved);
-                    if (new Date().getTime() - data.timestamp < 12 * 60 * 60 * 1000) {
-                        return data;
-                    }
+                    try {
+                        const data = JSON.parse(saved);
+                        // 24 horas de validade (24 * 60 * 60 * 1000)
+                        if (new Date().getTime() - data.timestamp < 24 * 60 * 60 * 1000) {
+                            return data;
+                        }
+                    } catch(e) {}
                 }
                 return null;
             });
 
-            const [inputName, setInputName] = useState('');
-            const [inputPhone, setInputPhone] = useState('');
+            // Verifica se o aparelho possui um usuário travado nas últimas 24h (mesmo após clicar em sair)
+            const [lockedDeviceUser, setLockedDeviceUser] = useState(() => {
+                const locked = localStorage.getItem('toca_karaoke_locked_device');
+                if (locked) {
+                    try {
+                        const data = JSON.parse(locked);
+                        if (new Date().getTime() - data.timestamp < 24 * 60 * 60 * 1000) {
+                            return data;
+                        }
+                    } catch(e) {}
+                }
+                return null;
+            });
+
+            const [inputName, setInputName] = useState(lockedDeviceUser ? lockedDeviceUser.name : '');
+            const [inputPhone, setInputPhone] = useState(lockedDeviceUser ? lockedDeviceUser.phone : '');
+            
             const [songTitle, setSongTitle] = useState('');
             const [songArtist, setSongArtist] = useState('');
             const [isSearchingAuto, setIsSearchingAuto] = useState(false);
@@ -173,7 +192,7 @@
             useEffect(() => { queueRef.current = queue; }, [queue]);
 
             const [history, setHistory] = useState([]);
-            const [floatingHearts, setFloatingHearts] = useState([]);
+            const [floatingEmojis, setFloatingEmojis] = useState([]);
             const [starMessages, setStarMessages] = useState([]);
 
             const [isPaused, setIsPaused] = useState(false);
@@ -230,11 +249,11 @@
                 }
             }, []);
 
-            const triggerFloatingHeart = () => {
-                const newHeartId = Date.now() + Math.random();
-                setFloatingHearts(prev => [...prev, newHeartId]);
+            const triggerFloatingEmoji = (emojiSymbol) => {
+                const newEmojiId = Date.now() + Math.random();
+                setFloatingEmojis(prev => [...prev, { id: newEmojiId, symbol: emojiSymbol }]);
                 setTimeout(() => {
-                    setFloatingHearts(prev => prev.filter(id => id !== newHeartId));
+                    setFloatingEmojis(prev => prev.filter(item => item.id !== newEmojiId));
                 }, 2500);
             };
 
@@ -259,8 +278,8 @@
                             artist: currentActive.artist,
                             user: currentActive.user,
                             phone: currentActive.phone || '',
-                            likes: 0,
-                            likedPhones: [],
+                            reactions: { '😲': 0, '❤️': 0, '👍': 0, '🥱': 0, '😂': 0 },
+                            reactedUsers: {}, // Salva quais telefones usaram quais emojis
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
                     } catch (err) {
@@ -308,7 +327,9 @@
                     if (doc.exists && isTelaoMode) {
                         const data = doc.data();
                         if (data && data.timestamp && (Date.now() - data.timestamp < 5000)) {
-                            triggerFloatingHeart();
+                            if (data.emoji) {
+                                triggerFloatingEmoji(data.emoji);
+                            }
                             if (data.type === 'stars') {
                                 triggerStarCelebration();
                             }
@@ -426,7 +447,6 @@
                 }
             }, [queue, backgroundSongActive, activePlayingSong]);
 
-            // Verificador de término exato do vídeo por segundo (Garante o avanço automático sem falhar)
             useEffect(() => {
                 if (!isTelaoMode) return;
 
@@ -437,7 +457,6 @@
                         const currentTime = ytPlayerRef.current.getCurrentTime();
                         const duration = ytPlayerRef.current.getDuration();
                         
-                        // Se o vídeo estiver tocando e faltar menos de 0.8 segundos para acabar (ou já tiver acabado)
                         if (duration > 0 && currentTime > 0 && (duration - currentTime < 0.8)) {
                             clearInterval(checkEndIntervalRef.current);
                             if (!backgroundSongActiveRef.current) {
@@ -560,6 +579,14 @@
                 const nameFormatted = inputName.trim();
                 const phoneFormatted = inputPhone.trim();
 
+                // Se houver trava de dispositivo anterior e divergir, impede
+                if (lockedDeviceUser) {
+                    if (lockedDeviceUser.phone.replace(/\D/g, '') !== phoneFormatted.replace(/\D/g, '')) {
+                        alert(`Este aparelho está vinculado por 24h ao usuário "${lockedDeviceUser.name}" (${lockedDeviceUser.phone}). Você deve entrar com os mesmos dados.`);
+                        return;
+                    }
+                }
+
                 const userData = {
                     name: nameFormatted,
                     phone: phoneFormatted,
@@ -568,6 +595,8 @@
 
                 setUser(userData);
                 localStorage.setItem('toca_karaoke_user', JSON.stringify(userData));
+                localStorage.setItem('toca_karaoke_locked_device', JSON.stringify(userData));
+                setLockedDeviceUser(userData);
 
                 try {
                     const cleanPhoneId = phoneFormatted.replace(/\D/g, '');
@@ -585,7 +614,7 @@
             };
 
             const handleLogout = () => {
-                if (confirm('Deseja realmente sair da sua conta?')) {
+                if (confirm('Deseja realmente sair da sua conta? Nota: por segurança, este dispositivo continuará vinculado ao seu cadastro por 24 horas.')) {
                     localStorage.removeItem('toca_karaoke_user');
                     setUser(null);
                 }
@@ -645,7 +674,7 @@
                     const videoId = getYouTubeVideoId(finalLink);
 
                     if (!videoId) {
-                        alert('Não foi possível encontrar um vídeo de karaokê automaticamente para esta música. Tente digitar o artista e o nome de outra forma.');
+                        alert('Não foi possível encontrar um vídeo de karaokê adequado para esta música. Tente digitar o artista e o nome de outra forma.');
                         setIsSearchingAuto(false);
                         return;
                     }
@@ -826,7 +855,7 @@
             };
 
             const handleResetNotes = async () => {
-                if (confirm('Deseja realmente zerar o histórico e os corações recebidos?')) {
+                if (confirm('Deseja realmente zerar o histórico e as reações recebidas?')) {
                     const batch = db.batch();
                     history.forEach(item => {
                         batch.delete(db.collection('history').doc(item.id));
@@ -844,12 +873,12 @@
                 window.open(window.location.pathname + '?telao=true', '_blank');
             };
 
-            const handleSendHeartForActiveSong = async () => {
+            const handleSendReaction = async (emojiSymbol) => {
                 const currentActive = activePlayingSongRef.current;
                 if (!currentActive || !currentActive.id || !user) return;
 
                 if (currentActive.phone && currentActive.phone === user.phone) {
-                    alert('Você não pode curtir a sua própria performance! Deixe para os fãs curtirem. 😉');
+                    alert('Você não pode reagir à sua própria performance! Deixe para a galera avaliar. 😉');
                     return;
                 }
 
@@ -858,57 +887,68 @@
                 
                 try {
                     const docSnap = await historyRef.get();
-                    let newLikesCount = 1;
                     let shouldTriggerStars = false;
 
                     if (docSnap.exists) {
                         const data = docSnap.data();
-                        const likedPhones = data.likedPhones || [];
+                        const reactedUsers = data.reactedUsers || {}; // Formato: { "telefone": ["❤️", "👍"] }
+                        const userEmojis = reactedUsers[userPhone] || [];
 
-                        if (likedPhones.includes(userPhone)) {
-                            alert('Você já curtiu esta performance! Cada pessoa pode curtir uma vez por música.');
+                        // Garante que o usuário pode usar cada emoji apenas uma vez
+                        if (userEmojis.includes(emojiSymbol)) {
+                            alert(`Você já utilizou o emoji ${emojiSymbol} nesta performance! Cada emoji pode ser usado uma única vez por música.`);
                             return;
                         }
 
-                        const oldLikes = data.likes || 0;
-                        newLikesCount = oldLikes + 1;
+                        const reactions = data.reactions || { '😲': 0, '❤️': 0, '👍': 0, '🥱': 0, '😂': 0 };
+                        const oldHeartLike = (reactions['❤️'] || 0) + (reactions['👍'] || 0);
+                        
+                        reactions[emojiSymbol] = (reactions[emojiSymbol] || 0) + 1;
+                        const newHeartLike = (reactions['❤️'] || 0) + (reactions['👍'] || 0);
 
-                        if (newLikesCount >= 3 && Math.floor(newLikesCount / 3) > Math.floor(oldLikes / 3)) {
+                        if (newHeartLike >= 3 && Math.floor(newHeartLike / 3) > Math.floor(oldHeartLike / 3)) {
                             shouldTriggerStars = true;
                         }
 
+                        const updatedUserEmojis = [...userEmojis, emojiSymbol];
+
                         await historyRef.update({
-                            likes: firebase.firestore.FieldValue.increment(1),
-                            likedPhones: firebase.firestore.FieldValue.arrayUnion(userPhone)
+                            [`reactions.${emojiSymbol}`]: firebase.firestore.FieldValue.increment(1),
+                            [`reactedUsers.${userPhone}`]: updatedUserEmojis
                         });
                     } else {
+                        const initialReactions = { '😲': 0, '❤️': 0, '👍': 0, '🥱': 0, '😂': 0 };
+                        initialReactions[emojiSymbol] = 1;
+
                         await historyRef.set({
                             title: currentActive.title,
                             artist: currentActive.artist,
                             user: currentActive.user,
                             phone: currentActive.phone || '',
-                            likes: 1,
-                            likedPhones: [userPhone],
+                            reactions: initialReactions,
+                            reactedUsers: { [userPhone]: [emojiSymbol] },
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
                     }
 
                     await db.collection('settings').doc('celebration').set({
-                        type: shouldTriggerStars ? 'stars' : 'heart',
+                        emoji: emojiSymbol,
+                        type: shouldTriggerStars ? 'stars' : 'reaction',
                         timestamp: Date.now()
                     });
 
                 } catch (err) {
-                    console.error("Erro ao registrar curtida:", err);
+                    console.error("Erro ao registrar reação:", err);
                 }
             };
 
             const rankedHistory = history.map(item => {
-                const totalLikes = item.likes || 0;
-                return { ...item, totalLikes };
-            }).sort((a, b) => b.totalLikes - a.totalLikes);
+                const reactions = item.reactions || { '😲': 0, '❤️': 0, '👍': 0, '🥱': 0, '😂': 0 };
+                const totalScore = (reactions['❤️'] || 0) + (reactions['👍'] || 0);
+                return { ...item, reactions, totalScore };
+            }).sort((a, b) => b.totalScore - a.totalScore);
 
-            const topSinger = rankedHistory.length > 0 && rankedHistory[0].totalLikes > 0 ? rankedHistory[0] : null;
+            const topSinger = rankedHistory.length > 0 && rankedHistory[0].totalScore > 0 ? rankedHistory[0] : null;
 
             if (isTelaoMode) {
                 const currentPlaying = backgroundSongActive || activePlayingSong;
@@ -919,13 +959,13 @@
                     React.createElement(
                         'div',
                         { className: 'absolute inset-0 pointer-events-none overflow-hidden z-40' },
-                        floatingHearts.map((id, index) => {
-                            const randomLeft = 10 + (index * 17) % 80;
+                        floatingEmojis.map((item) => {
+                            const randomLeft = 10 + (item.id % 80);
                             return React.createElement('div', {
-                                key: id,
+                                key: item.id,
                                 style: { left: `${randomLeft}%`, bottom: '10%' },
-                                className: 'absolute text-6xl sm:text-8xl floating-heart filter drop-shadow-lg'
-                            }, '❤️');
+                                className: 'absolute text-6xl sm:text-8xl floating-emoji filter drop-shadow-lg'
+                            }, item.symbol);
                         })
                     ),
                     React.createElement(
@@ -1035,7 +1075,7 @@
                                 { className: 'text-center mb-6' },
                                 React.createElement('span', { className: 'bg-amber-500/10 text-amber-400 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider' }, 'Toca do Guerreiro'),
                                 React.createElement('h1', { className: 'text-3xl font-extrabold text-amber-500 mt-3' }, 'Karaokê'),
-                                React.createElement('p', { className: 'text-zinc-400 text-sm mt-1' }, 'Informe seus dados para participar')
+                                React.createElement('p', { className: 'text-zinc-400 text-sm mt-1' }, lockedDeviceUser ? 'Aparelho vinculado. Confirme seus dados para entrar:' : 'Informe seus dados para participar')
                             ),
                             React.createElement(
                                 'form',
@@ -1076,7 +1116,8 @@
                 );
             }
 
-            const hasUserLikedCurrent = activePlayingSong && history.find(h => h.id === activePlayingSong.id)?.likedPhones?.includes(user.phone);
+            const currentActiveHistory = activePlayingSong && history.find(h => h.id === activePlayingSong.id);
+            const userUsedEmojis = currentActiveHistory && currentActiveHistory.reactedUsers ? (currentActiveHistory.reactedUsers[user.phone] || []) : [];
             const isUserTheSinger = activePlayingSong && activePlayingSong.phone === user.phone;
 
             return React.createElement(
@@ -1086,7 +1127,7 @@
                 
                 activePlayingSong && React.createElement(
                     'div',
-                    { className: 'bg-gradient-to-r from-red-500/20 via-amber-500/10 to-zinc-900 border border-red-500/40 rounded-2xl p-5 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl' },
+                    { className: 'bg-gradient-to-r from-red-500/20 via-amber-500/10 to-zinc-900 border border-red-500/40 rounded-2xl p-5 mb-6 flex flex-col gap-4 shadow-xl' },
                     React.createElement(
                         'div',
                         { className: 'flex items-center gap-4 text-center sm:text-left' },
@@ -1100,12 +1141,23 @@
                         )
                     ),
                     React.createElement(
-                        'button',
-                        {
-                            onClick: handleSendHeartForActiveSong,
-                            className: `w-full sm:w-auto font-extrabold px-6 py-3 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2 text-sm shrink-0 ${isUserTheSinger ? 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed' : hasUserLikedCurrent ? 'bg-zinc-800 text-zinc-400 border border-zinc-700 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 text-zinc-950'}`
-                        },
-                        isUserTheSinger ? '❤️ Sua Própria Performance' : hasUserLikedCurrent ? '❤️ Performance Curtida!' : '❤️ Curtir Performance'
+                        'div',
+                        { className: 'pt-2 border-t border-red-500/20 flex flex-col items-center' },
+                        React.createElement('span', { className: 'text-xs font-bold text-amber-400 uppercase tracking-wider mb-2' }, isUserTheSinger ? '⚠️ Você é o cantor desta música (avaliação bloqueada)' : '⭐ Avalie a performance com emojis (cada emoji pode ser usado 1 vez):'),
+                        React.createElement(
+                            'div',
+                            { className: 'flex items-center justify-center gap-3 sm:gap-4 flex-wrap' },
+                            ['😲', '❤️', '👍', '🥱', '😂'].map(emoji => {
+                                const alreadyUsedThisEmoji = userUsedEmojis.includes(emoji);
+                                return React.createElement('button', {
+                                    key: emoji,
+                                    onClick: () => handleSendReaction(emoji),
+                                    disabled: isUserTheSinger || alreadyUsedThisEmoji,
+                                    title: alreadyUsedThisEmoji ? 'Você já usou este emoji nesta música' : 'Enviar reação',
+                                    className: `relative text-3xl sm:text-4xl p-3 rounded-2xl bg-zinc-950/85 border transition-all ${isUserTheSinger ? 'opacity-40 border-zinc-800 cursor-not-allowed' : alreadyUsedThisEmoji ? 'opacity-40 border-amber-500/50 cursor-not-allowed grayscale' : 'border-zinc-800 hover:border-amber-500 hover:scale-110 active:scale-90 shadow-lg'}`
+                                }, emoji, alreadyUsedThisEmoji && React.createElement('span', { className: 'absolute -top-1 -right-1 bg-amber-500 text-zinc-950 font-black text-[10px] w-5 h-5 rounded-full flex items-center justify-center shadow' }, '✓'));
+                            })
+                        )
                     )
                 ),
 
@@ -1116,7 +1168,7 @@
                     React.createElement(
                         'div',
                         { className: 'flex-1 min-w-0' },
-                        React.createElement('span', { className: 'text-[11px] font-bold text-amber-400 uppercase tracking-widest block' }, 'Destaque da Noite (Mais Curtido)'),
+                        React.createElement('span', { className: 'text-[11px] font-bold text-amber-400 uppercase tracking-widest block' }, 'Destaque da Noite (Mais ❤️ e 👍)'),
                         topSinger ? React.createElement(
                             'div',
                             { className: 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mt-0.5' },
@@ -1126,8 +1178,8 @@
                                 React.createElement('h3', { className: 'text-lg sm:text-xl font-extrabold text-zinc-100 truncate' }, topSinger.user),
                                 React.createElement('p', { className: 'text-xs text-zinc-400 truncate' }, `${topSinger.title} - ${topSinger.artist}`)
                             ),
-                            React.createElement('div', { className: 'self-start sm:self-auto bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold px-3 py-1 rounded-xl' }, `❤️ ${topSinger.totalLikes} corações`)
-                        ) : React.createElement('p', { className: 'text-sm text-zinc-400 mt-0.5' }, 'Ainda sem corações. Curta as apresentações para colocar alguém no topo!')
+                            React.createElement('div', { className: 'self-start sm:self-auto bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold px-3 py-1 rounded-xl' }, `❤️ ${topSinger.reactions['❤️'] || 0} | 👍 ${topSinger.reactions['👍'] || 0}`)
+                        ) : React.createElement('p', { className: 'text-sm text-zinc-400 mt-0.5' }, 'Ainda sem destaques. Envie reações para colocar alguém no topo!')
                     )
                 ),
                 React.createElement(
@@ -1203,7 +1255,7 @@
                         React.createElement('button', {
                             onClick: handleResetNotes,
                             className: 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold px-3 py-2 rounded-xl transition-all text-xs'
-                        }, '🗑️ Zerar Corações e Histórico')
+                        }, '🗑️ Zerar Reações e Histórico')
                     ),
                     React.createElement(
                         'div',
@@ -1298,7 +1350,15 @@
                                 'div',
                                 { className: 'flex justify-between items-center mb-4' },
                                 React.createElement('h3', { className: 'text-lg font-bold text-zinc-100' }, 'Fila de Espera'),
-                                React.createElement('span', { className: 'bg-zinc-800 text-zinc-300 text-xs font-bold px-2.5 py-1 rounded-lg' }, `${queue.length} na fila`)
+                                React.createElement(
+                                    'div',
+                                    { className: 'flex items-center gap-2' },
+                                    React.createElement('button', {
+                                        onClick: () => window.location.reload(),
+                                        className: 'bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-bold text-xs px-3 py-1.5 rounded-lg border border-zinc-700 transition-colors'
+                                    }, '🔄 Atualizar Fila'),
+                                    React.createElement('span', { className: 'bg-zinc-800 text-zinc-300 text-xs font-bold px-2.5 py-1 rounded-lg' }, `${queue.length} na fila`)
+                                )
                             ),
                             queue.length === 0 ? React.createElement('div', { className: 'text-center py-8 text-zinc-500 text-sm border border-dashed border-zinc-800 rounded-xl' }, 'Nenhuma música na fila no momento. Peça a primeira ou ative a música de fundo!') : React.createElement(
                                 'div',
@@ -1376,12 +1436,26 @@
                         React.createElement(
                             'div',
                             { className: 'bg-zinc-900 border border-zinc-800 rounded-2xl p-6' },
-                            React.createElement('h3', { className: 'text-lg font-bold text-zinc-100 mb-1' }, 'Ranking de Performances'),
-                            React.createElement('p', { className: 'text-xs text-zinc-400 mb-4' }, 'Veja as músicas que já tocaram e quantos corações receberam!'),
+                            React.createElement(
+                                'div',
+                                { className: 'flex justify-between items-center mb-4' },
+                                React.createElement(
+                                    'div',
+                                    null,
+                                    React.createElement('h3', { className: 'text-lg font-bold text-zinc-100 mb-0.5' }, 'Ranking de Performances'),
+                                    React.createElement('p', { className: 'text-xs text-zinc-400' }, 'Veja as músicas que já tocaram e as reações recebidas!')
+                                ),
+                                React.createElement('button', {
+                                    onClick: () => window.location.reload(),
+                                    className: 'bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-bold text-xs px-3 py-1.5 rounded-lg border border-zinc-700 transition-colors shrink-0'
+                                }, '🔄 Atualizar Ranking')
+                            ),
                             rankedHistory.length === 0 ? React.createElement('div', { className: 'text-center py-8 text-zinc-500 text-sm border border-dashed border-zinc-800 rounded-xl' }, 'Nenhuma música tocada ainda.') : React.createElement(
                                 'div',
                                 { className: 'space-y-3' },
                                 rankedHistory.map((item, index) => {
+                                    const r = item.reactions || { '😲': 0, '❤️': 0, '👍': 0, '🥱': 0, '😂': 0 };
+
                                     return React.createElement(
                                         'div',
                                         { key: item.id, className: 'bg-zinc-950 border border-zinc-800/80 p-4 rounded-xl flex items-center justify-between gap-4' },
@@ -1403,9 +1477,12 @@
                                         ),
                                         React.createElement(
                                             'div',
-                                            { className: 'bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5' },
-                                            React.createElement('span', null, '❤️'),
-                                            React.createElement('span', null, `${item.totalLikes} ${item.totalLikes === 1 ? 'coração' : 'corações'}`)
+                                            { className: 'bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-2.5 flex-wrap justify-end' },
+                                            React.createElement('span', null, `😲 ${r['😲'] || 0}`),
+                                            React.createElement('span', null, `❤️ ${r['❤️'] || 0}`),
+                                            React.createElement('span', null, `👍 ${r['👍'] || 0}`),
+                                            React.createElement('span', null, `🥱 ${r['🥱'] || 0}`),
+                                            React.createElement('span', null, `😂 ${r['😂'] || 0}`)
                                         )
                                     );
                                 })
