@@ -96,10 +96,11 @@
             return videoId;
         }
 
+        // Função refinada para garantir que o YouTube traga estritamente a versão Karaokê/Instrumental
         async function fetchYouTubeApiLink(title, artist) {
             if (!YOUTUBE_API_KEY) return "";
             try {
-                const query = encodeURIComponent(`${title} ${artist} karaoke`);
+                const query = encodeURIComponent(`${title} ${artist} karaoke instrumental`);
                 const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${query}&type=video&key=${YOUTUBE_API_KEY}`;
                 const response = await fetch(url);
                 const data = await response.json();
@@ -205,7 +206,6 @@
             const handleNextSong = async () => {
                 const currentQueue = queueRef.current;
                 
-                // Salva no histórico apenas quando a música que estava tocando realmente acaba/avança
                 if (activePlayingSong && activePlayingSong.id && !backgroundSongActive) {
                     try {
                         await db.collection('history').add({
@@ -623,7 +623,6 @@
 
                     const docRef = await db.collection('queue').add(songData);
                     
-                    // Apenas define a música como ativa se o player estiver completamente ocioso (sem tocar nada)
                     if (!activePlayingSong && !backgroundSongActive && videoId) {
                         await db.collection('settings').doc('activePlaying').set({ 
                             song: { id: docRef.id, ...songData, timestamp: Date.now() } 
