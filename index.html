@@ -56,7 +56,7 @@
         }
         const db = firebase.firestore();
 
-        // Mapeamento correto dos vídeos do guerreirinho no GitHub
+        // Mapeamento direto dos vídeos do guerreirinho no GitHub
         const GUERREIRO_VIDEOS = {
             '🙉': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro1.mp4',
             '👏': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro2.mp4',
@@ -259,7 +259,7 @@
                 }
             }, []);
 
-            // Gerenciamento da fila de vídeos com Chroma Key ativo
+            // Fila de reprodução dos vídeos do guerreirinho com Chroma Key por Canvas
             const playNextGuerreiroInQueue = () => {
                 if (guerreiroQueueRef.current.length === 0) {
                     isPlayingGuerreiroRef.current = false;
@@ -303,7 +303,7 @@
                                     let green = data[i + 1];
                                     let blue = data[i + 2];
 
-                                    // Remove fundo verde (Chroma Key)
+                                    // Remove o fundo verde (Chroma Key)
                                     if (green > 90 && red < 90 && blue < 90) {
                                         data[i + 3] = 0;
                                     }
@@ -404,16 +404,15 @@
                     setHistory(items);
                 });
 
+                // Ouvinte corrigido para disparar a animação instantaneamente ao receber qualquer alteração
                 const unsubCelebration = db.collection('settings').doc('celebration').onSnapshot(doc => {
-                    if (doc.exists && isTelaoMode) {
+                    if (doc.exists) {
                         const data = doc.data();
-                        if (data && data.timestamp && (Date.now() - data.timestamp < 6000)) {
-                            if (data.emoji && GUERREIRO_VIDEOS[data.emoji]) {
-                                enqueueGuerreiroVideo(data.emoji);
-                            }
-                            if (data.type === 'stars') {
-                                triggerStarCelebration();
-                            }
+                        if (data && data.emoji && GUERREIRO_VIDEOS[data.emoji]) {
+                            enqueueGuerreiroVideo(data.emoji);
+                        }
+                        if (data && data.type === 'stars') {
+                            triggerStarCelebration();
                         }
                     }
                 });
@@ -477,7 +476,7 @@
                     unsubUsers();
                     unsubMuted();
                 };
-            }, [isTelaoMode]);
+            }, []);
 
             useEffect(() => {
                 if (!isTelaoMode || !activePlayingSong || backgroundSongActive) return;
@@ -1010,6 +1009,7 @@
                         });
                     }
 
+                    // Envia o sinal atualizado para o documento celebration disparar imediatamente no telão
                     await db.collection('settings').doc('celebration').set({
                         emoji: emojiSymbol,
                         type: shouldTriggerStars ? 'stars' : 'reaction',
@@ -1035,7 +1035,7 @@
                 return React.createElement(
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
-                    // Vídeo mantido ATIVO nos bastidores com opacity-0 (sem display: none para permitir decodificação e Chroma Key)
+                    // Vídeo mantido ATIVO nos bastidores com opacity-0 para Chroma Key rodar livremente
                     React.createElement('video', {
                         ref: hiddenVideoRef,
                         style: { position: 'absolute', opacity: 0, pointerEvents: 'none', width: '1px', height: '1px', zIndex: -10 },
