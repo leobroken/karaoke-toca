@@ -32,6 +32,14 @@
         .floating-star-message {
             animation: popUpMessage 3s ease-out forwards;
         }
+        /* Força o iframe do YouTube a preencher todo o espaço flexível da tela */
+        #youtube-player-container iframe {
+            width: 100% !important;
+            height: 100% !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+        }
     </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen">
@@ -1089,7 +1097,7 @@
 
                 return React.createElement(
                     'div',
-                    { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
+                    { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-0 overflow-hidden select-none relative w-full h-full' },
                     activeGuerreiros.map(g => React.createElement(FloatingGuerreiro, { key: g.id, emoji: g.emoji, onFinish: () => setActiveGuerreiros(prev => prev.filter(item => item.id !== g.id)) })),
                     React.createElement(
                         'div',
@@ -1121,11 +1129,11 @@
                     ),
                     React.createElement(
                         'div',
-                        { className: 'w-full max-w-5xl aspect-video bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center relative' },
-                        React.createElement('div', { id: 'youtube-player-container', className: 'w-full h-full' }),
+                        { className: 'w-full h-full bg-black relative flex items-center justify-center' },
+                        React.createElement('div', { id: 'youtube-player-container', className: 'w-full h-full absolute inset-0' }),
                         !currentPlaying && React.createElement(
                             'div',
-                            { className: 'absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-zinc-900' },
+                            { className: 'absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-zinc-950 z-20' },
                             React.createElement('h2', { className: 'text-3xl font-extrabold text-amber-500 mb-2' }, 'Aguardando Próxima Música...'),
                             React.createElement('p', { className: 'text-zinc-400' }, 'Peça uma música ou adicione uma música de fundo no Painel Admin 🎤')
                         ),
