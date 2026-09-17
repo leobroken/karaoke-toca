@@ -56,7 +56,6 @@
         }
         const db = firebase.firestore();
 
-        // Mapeamento dos vídeos do guerreirinho (com o 👏 no lugar do 👍)
         const GUERREIRO_VIDEOS = {
             '🙉': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro1.mp4',
             '❤️': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro3.mp4',
@@ -155,13 +154,11 @@
             return "";
         }
 
-        // Componente autônomo para cada guerreirinho flutuante nas bordas
         function FloatingGuerreiro({ emoji, onFinish }) {
             const canvasRef = useRef(null);
             const videoRef = useRef(null);
             const animRef = useRef(null);
 
-            // Posições pré-definidas nas bordas para evitar cobrir o centro da tela
             const edgePositions = [
                 { bottom: '1rem', left: '2rem' },
                 { bottom: '1rem', right: '2rem' },
@@ -225,7 +222,7 @@
             return React.createElement(
                 'div',
                 {
-                    className: 'absolute pointer-events-none z-40 flex items-center justify-center animate-bounce',
+                    className: 'absolute pointer-events-none z-40 flex items-center justify-center',
                     style: randomPos
                 },
                 React.createElement('video', {
@@ -281,7 +278,7 @@
             useEffect(() => { queueRef.current = queue; }, [queue]);
 
             const [history, setHistory] = useState([]);
-            const [activeGuerreiros, setActiveGuerreiros] = useState([]); // Lista para múltiplos guerreiros nas bordas
+            const [activeGuerreiros, setActiveGuerreiros] = useState([]);
             const [starMessages, setStarMessages] = useState([]);
 
             const [isPaused, setIsPaused] = useState(false);
@@ -409,7 +406,6 @@
                         const data = doc.data();
                         if (data && data.timestamp && (Date.now() - data.timestamp < 5000)) {
                             if (data.emoji && GUERREIRO_VIDEOS[data.emoji]) {
-                                // Adiciona um novo guerreirinho flutuante na tela sem atropelar os outros
                                 const newId = Date.now() + Math.random();
                                 setActiveGuerreiros(prev => [...prev, { id: newId, emoji: data.emoji }]);
                             }
@@ -1038,7 +1034,6 @@
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
                     
-                    // Renderiza múltiplos guerreirinhos flutuando pelas bordas simultaneamente
                     activeGuerreiros.map(g => 
                         React.createElement(FloatingGuerreiro, {
                             key: g.id,
