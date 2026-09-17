@@ -240,40 +240,47 @@
                 const ctx = canvas.getContext('2d', { willReadFrequently: true });
                 video.src = GUERREIRO_VIDEOS[nextEmoji];
                 video.currentTime = 0;
-                video.play().catch(e => {
+                
+                video.play().then(() => {
+                    const processFrame = () => {
+                        if (video.paused || video.ended) {
+                            return;
+                        }
+
+                        if (video.videoWidth > 0 && video.videoHeight > 0) {
+                            canvas.width = video.videoWidth;
+                            canvas.height = video.videoHeight;
+
+                            try {
+                                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                                let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                                let data = frame.data;
+
+                                for (let i = 0; i < data.length; i += 4) {
+                                    let red = data[i];
+                                    let green = data[i + 1];
+                                    let blue = data[i + 2];
+
+                                    // Remove fundo verde (Chroma Key)
+                                    if (green > 90 && red < 90 && blue < 90) {
+                                        data[i + 3] = 0;
+                                    }
+                                }
+
+                                ctx.putImageData(frame, 0, 0);
+                            } catch (err) {
+                                // Fallback caso ocorra restrição de CORS no canvas
+                                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                            }
+                        }
+                        animFrameRef.current = requestAnimationFrame(processFrame);
+                    };
+                    processFrame();
+                }).catch(e => {
                     console.error("Erro ao reproduzir vídeo do guerreiro:", e);
                     playNextGuerreiroInQueue();
                 });
-
-                const processFrame = () => {
-                    if (video.paused || video.ended) {
-                        return;
-                    }
-
-                    canvas.width = video.videoWidth || 640;
-                    canvas.height = video.videoHeight || 360;
-
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    let data = frame.data;
-
-                    for (let i = 0; i < data.length; i += 4) {
-                        let red = data[i];
-                        let green = data[i + 1];
-                        let blue = data[i + 2];
-
-                        if (green > 90 && red < 90 && blue < 90) {
-                            data[i + 3] = 0;
-                        }
-                    }
-
-                    ctx.putImageData(frame, 0, 0);
-                    animFrameRef.current = requestAnimationFrame(processFrame);
-                };
-
-                video.onplay = () => {
-                    processFrame();
-                };
 
                 video.onended = () => {
                     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
@@ -347,10 +354,11 @@
                     setHistory(items);
                 });
 
+                // Listener global de reações em tempo real para disparar imediatamente no telão
                 const unsubCelebration = db.collection('settings').doc('celebration').onSnapshot(doc => {
                     if (doc.exists && isTelaoMode) {
                         const data = doc.data();
-                        if (data && data.timestamp && (Date.now() - data.timestamp < 5000)) {
+                        if (data && data.timestamp && (Date.now() - data.timestamp < 10000)) {
                             if (data.emoji && GUERREIRO_VIDEOS[data.emoji]) {
                                 triggerGuerreiroVideo(data.emoji);
                             }
@@ -939,6 +947,7 @@
                         });
                     }
 
+                    // Disparo instantâneo do gatilho para o telão exibir o vídeo do guerreirinho
                     await db.collection('settings').doc('celebration').set({
                         emoji: emojiSymbol,
                         type: 'reaction',
@@ -964,6 +973,7 @@
                 return React.createElement(
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
+                    // Elemento de vídeo oculto com crossorigin habilitado para evitar bloqueio de CORS do GitHub
                     React.createElement('video', {
                         ref: hiddenVideoRef,
                         style: { display: 'none' },
@@ -973,10 +983,10 @@
                     }),
                     activeGuerreiroVideo && React.createElement(
                         'div',
-                        { className: 'absolute bottom-4 left-1/2 transform -translate-x-1/2 pointer-events-none z-40 flex items-center justify-center' },
+                        { className: 'absolute bottom-6 left-1/2 transform -translate-x-1/2 pointer-events-none z-40 flex items-center justify-center' },
                         React.createElement('canvas', {
                             ref: canvasRef,
-                            className: 'max-h-36 sm:max-h-48 w-auto drop-shadow-2xl'
+                            className: 'max-h-40 sm:max-h-56 w-auto drop-shadow-2xl'
                         })
                     ),
                     introCountdown ? React.createElement(
