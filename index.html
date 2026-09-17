@@ -239,6 +239,127 @@
             );
         }
 
+        // Componente para o Mini Monitor Flutuante Arrastável do Admin
+        function FloatingAdminMonitor({ activePlayingSong, onClose }) {
+            const [position, setPosition] = useState({ x: 20, y: 80 });
+            const isDragging = useRef(false);
+            const dragOffset = useRef({ x: 0, y: 0 });
+            const miniPlayerRef = useRef(null);
+
+            const handleTouchStart = (e) => {
+                isDragging.current = true;
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                dragOffset.current = {
+                    x: clientX - position.x,
+                    y: clientY - position.y
+                };
+            };
+
+            const handleTouchMove = (e) => {
+                if (!isDragging.current) return;
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                setPosition({
+                    x: clientX - dragOffset.current.x,
+                    y: clientY - dragOffset.current.y
+                });
+            };
+
+            const handleTouchEnd = () => {
+                isDragging.current = false;
+            };
+
+            useEffect(() => {
+                const onMouseMove = (e) => {
+                    if (!isDragging.current) return;
+                    setPosition({
+                        x: e.clientX - dragOffset.current.x,
+                        y: e.clientY - dragOffset.current.y
+                    });
+                };
+                const onMouseUp = () => { isDragging.current = false; };
+
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+                window.addEventListener('touchmove', handleTouchMove);
+                window.addEventListener('touchend', handleTouchEnd);
+
+                return () => {
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                    window.removeEventListener('touchmove', handleTouchMove);
+                    window.removeEventListener('touchend', handleTouchEnd);
+                };
+            }, []);
+
+            useEffect(() => {
+                const videoId = activePlayingSong ? (activePlayingSong.videoId || getYouTubeVideoId(activePlayingSong.youtubeLink)) : null;
+                if (!videoId) return;
+
+                const initMiniPlayer = () => {
+                    if (window.YT && window.YT.Player) {
+                        if (window.miniYtPlayer && typeof window.miniYtPlayer.destroy === 'function') {
+                            try { window.miniYtPlayer.destroy(); } catch(e){}
+                        }
+                        window.miniYtPlayer = new YT.Player('mini-youtube-player', {
+                            height: '100%',
+                            width: '100%',
+                            videoId: videoId,
+                            playerVars: {
+                                'autoplay': 1,
+                                'controls': 0,
+                                'mute': 1, // Mutado no monitor do admin para não dar eco no bar
+                                'rel': 0
+                            }
+                        });
+                    }
+                };
+
+                if (!window.YT || !window.YT.Player) {
+                    setTimeout(initMiniPlayer, 1000);
+                } else {
+                    initMiniPlayer();
+                }
+            }, [activePlayingSong]);
+
+            return React.createElement(
+                'div',
+                {
+                    ref: miniPlayerRef,
+                    style: { left: `${position.x}px`, top: `${position.y}px` },
+                    className: 'fixed z-50 w-72 bg-zinc-900 border-2 border-amber-500/80 rounded-2xl shadow-2xl overflow-hidden select-none'
+                },
+                // Barra Superior Arrastável
+                React.createElement(
+                    'div',
+                    {
+                        onMouseDown: handleTouchStart,
+                        onTouchStart: handleTouchStart,
+                        className: 'bg-amber-500 text-zinc-950 px-3 py-1.5 flex items-center justify-between cursor-move font-bold text-xs'
+                    },
+                    React.createElement('span', null, '👁️ Monitor Admin (Arraste)'),
+                    React.createElement('button', {
+                        onClick: onClose,
+                        className: 'bg-zinc-950 text-amber-400 hover:bg-zinc-900 w-5 h-5 rounded-full flex items-center justify-center text-[10px]'
+                    }, '✕')
+                ),
+                // Tela do Vídeo Miniatura
+                React.createElement(
+                    'div',
+                    { className: 'w-full aspect-video bg-black relative flex items-center justify-center' },
+                    React.createElement('div', { id: 'mini-youtube-player', className: 'w-full h-full pointer-events-none' }),
+                    !activePlayingSong && React.createElement('div', { className: 'absolute text-[11px] text-zinc-400 p-2 text-center' }, 'Telão aguardando...')
+                ),
+                // Informação do Cantor atual
+                React.createElement(
+                    'div',
+                    { className: 'p-2 bg-zinc-950 text-[11px] text-zinc-300 truncate' },
+                    activePlayingSong ? React.createElement('span', null, 'Cantando: ', React.createElement('span', { className: 'text-amber-400 font-semibold' }, activePlayingSong.user)) : 'Nenhum cantor ativo'
+                )
+            );
+        }
+
         function App() {
             const [user, setUser] = useState(() => {
                 const saved = localStorage.getItem('toca_karaoke_user');
@@ -288,6 +409,9 @@
             const [backgroundLinkInput, setBackgroundLinkInput] = useState('');
             const [backgroundSongActive, setBackgroundSongActive] = useState(null);
             const [isTelaoMutedState, setIsTelaoMutedState] = useState(false);
+
+            // Estado para o mini monitor flutuante do Admin
+            const [showAdminMonitor, setShowAdminMonitor] = useState(false);
 
             const [introCountdown, setIntroCountdown] = useState(null);
             const introTimerRef = useRef(null);
@@ -775,7 +899,6 @@
                         });
                     }
 
-                    // Verifica se já existe um link memorizado para essa música e artista
                     const titleClean = songTitle.trim().toLowerCase();
                     const artistClean = songArtist.trim().toLowerCase();
                     const memoryDocId = `${artistClean}___${titleClean}`.replace(/[^a-z0-9]/g, '_');
@@ -790,7 +913,6 @@
                         videoId = getYouTubeVideoId(finalLink);
                     }
 
-                    // Se não tiver na memória, busca na API do YouTube normalmente
                     if (!videoId) {
                         finalLink = await fetchYouTubeApiLink(songTitle.trim(), songArtist.trim());
                         videoId = getYouTubeVideoId(finalLink);
@@ -857,6 +979,7 @@
             const handleAdminLogout = () => {
                 localStorage.removeItem('toca_karaoke_admin');
                 setIsAdmin(false);
+                setShowAdminMonitor(false);
             };
 
             const handleSaveYouTubeLink = async (songId) => {
@@ -879,7 +1002,6 @@
                 }
             };
 
-            // NOVA FUNÇÃO: Memorizar o link perfeito para esta música e artista
             const handleMemorizeLink = async (song) => {
                 const linkToMemorize = youtubeInputs[song.id] !== undefined ? youtubeInputs[song.id] : (song.youtubeLink || '');
                 if (!linkToMemorize.trim()) {
@@ -906,7 +1028,6 @@
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
 
-                    // Atualiza também o link na música atual da fila se necessário
                     await db.collection('queue').doc(song.id).update({
                         youtubeLink: linkToMemorize.trim(),
                         videoId: videoId
@@ -1298,7 +1419,14 @@
 
             return React.createElement(
                 'div',
-                { className: 'max-w-4xl mx-auto px-4 py-8' },
+                { className: 'max-w-4xl mx-auto px-4 py-8 relative' },
+                
+                // Mini Monitor Flutuante do Admin Ativo
+                isAdmin && showAdminMonitor && React.createElement(FloatingAdminMonitor, {
+                    activePlayingSong: activePlayingSong,
+                    onClose: () => setShowAdminMonitor(false)
+                }),
+
                 React.createElement('div', { className: 'w-full h-48 sm:h-72 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl mb-6' }, React.createElement('img', { src: 'banner.jpg', alt: 'Toca do Guerreiro Karaokê', className: 'w-full h-full object-cover object-center' })),
                 
                 activePlayingSong && !activePlayingSong.isBackground && React.createElement(
@@ -1403,11 +1531,15 @@
                     React.createElement('h3', { className: 'text-amber-400 font-bold text-base flex items-center gap-2' }, '👑 Painel de Administração'),
                     React.createElement(
                         'div',
-                        { className: 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 items-center' },
+                        { className: 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 items-center' },
                         React.createElement('button', {
                             onClick: openTelaoWindow,
                             className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-500/10 text-xs flex items-center justify-center gap-1 text-center'
                         }, '🖥️ Telão'),
+                        React.createElement('button', {
+                            onClick: () => setShowAdminMonitor(!showAdminMonitor),
+                            className: `${showAdminMonitor ? 'bg-purple-600 text-zinc-100' : 'bg-zinc-800 text-purple-400 border border-purple-500/40'} font-bold px-3 py-2.5 rounded-xl transition-all text-xs text-center`
+                        }, showAdminMonitor ? '👁️ Fechar Monitor' : '👁️ Monitor Telão'),
                         React.createElement('button', {
                             onClick: handleToggleTelaoPlayPause,
                             className: `${isTelaoMutedState ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950' : 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40'} font-bold px-3 py-2.5 rounded-xl transition-all text-xs text-center`
