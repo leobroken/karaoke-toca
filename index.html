@@ -303,7 +303,7 @@
                             artist: currentActive.artist,
                             user: currentActive.user,
                             phone: currentActive.phone || '',
-                            reactions: { '🙉': 0, '❤️': 0, '👍': 0, '👏': 0 },
+                            reactions: { '🙉': 0, '❤️': 0, '👏': 0 },
                             reactedUsers: {},
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
@@ -926,7 +926,7 @@
                             [`reactedUsers.${userPhone}`]: updatedUserEmojis
                         });
                     } else {
-                        const initialReactions = { '🙉': 0, '❤️': 0, '👍': 0, '👏': 0 };
+                        const initialReactions = { '🙉': 0, '❤️': 0, '👏': 0 };
                         initialReactions[emojiSymbol] = 1;
 
                         await historyRef.set({
@@ -952,7 +952,7 @@
             };
 
             const rankedHistory = history.map(item => {
-                const reactions = item.reactions || { '🙉': 0, '❤️': 0, '👍': 0, '👏': 0 };
+                const reactions = item.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
                 const totalScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
                 return { ...item, reactions, totalScore };
             }).sort((a, b) => b.totalScore - a.totalScore);
@@ -1145,7 +1145,7 @@
                         React.createElement(
                             'div',
                             { className: 'flex items-center justify-center gap-3 sm:gap-4 flex-wrap' },
-                            ['🙉', '👏', '❤️', '👍'].map(emoji => {
+                            ['🙉', '👏', '❤️'].map(emoji => {
                                 const alreadyUsedThisEmoji = userUsedEmojis.includes(emoji);
                                 return React.createElement('button', {
                                     key: emoji,
@@ -1452,7 +1452,7 @@
                                 'div',
                                 { className: 'space-y-3' },
                                 rankedHistory.map((item, index) => {
-                                    const r = item.reactions || { '🙉': 0, '❤️': 0, '👍': 0, '👏': 0 };
+                                    const r = item.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
 
                                     return React.createElement(
                                         'div',
@@ -1478,8 +1478,7 @@
                                             { className: 'bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-2.5 flex-wrap justify-end' },
                                             React.createElement('span', null, `🙉 ${r['🙉'] || 0}`),
                                             React.createElement('span', null, `👏 ${r['👏'] || 0}`),
-                                            React.createElement('span', null, `❤️ ${r['❤️'] || 0}`),
-                                            React.createElement('span', null, `👍 ${r['👍'] || 0}`)
+                                            React.createElement('span', null, `❤️ ${r['❤️'] || 0}`)
                                         )
                                     );
                                 })
