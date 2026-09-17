@@ -32,13 +32,21 @@
         .floating-star-message {
             animation: popUpMessage 3s ease-out forwards;
         }
-        /* Força o iframe do YouTube a preencher todo o espaço flexível da tela */
+        /* Garante que o player do YouTube ocupe perfeitamente a tela inteira sem falhas */
+        #youtube-player-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
         #youtube-player-container iframe {
             width: 100% !important;
             height: 100% !important;
             position: absolute !important;
             top: 0 !important;
             left: 0 !important;
+            border: none !important;
         }
     </style>
 </head>
@@ -1097,7 +1105,7 @@
 
                 return React.createElement(
                     'div',
-                    { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-0 overflow-hidden select-none relative w-full h-full' },
+                    { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-0 overflow-hidden select-none relative w-screen h-screen' },
                     activeGuerreiros.map(g => React.createElement(FloatingGuerreiro, { key: g.id, emoji: g.emoji, onFinish: () => setActiveGuerreiros(prev => prev.filter(item => item.id !== g.id)) })),
                     React.createElement(
                         'div',
@@ -1129,8 +1137,8 @@
                     ),
                     React.createElement(
                         'div',
-                        { className: 'w-full h-full bg-black relative flex items-center justify-center' },
-                        React.createElement('div', { id: 'youtube-player-container', className: 'w-full h-full absolute inset-0' }),
+                        { className: 'w-screen h-screen bg-black relative' },
+                        React.createElement('div', { id: 'youtube-player-container' }),
                         !currentPlaying && React.createElement(
                             'div',
                             { className: 'absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-zinc-950 z-20' },
