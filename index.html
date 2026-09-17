@@ -56,7 +56,6 @@
         }
         const db = firebase.firestore();
 
-        // Mapeamento dos vídeos do guerreirinho no GitHub
         const GUERREIRO_VIDEOS = {
             '🙉': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro1.mp4',
             '👏': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro2.mp4',
@@ -255,7 +254,7 @@
                 }
             }, []);
 
-            // Efeito de Chroma Key no Canvas para remover o fundo verde do Guerreirinho em tempo real
+            // Chroma Key e controle de término para sumir com o vídeo do guerreirinho
             useEffect(() => {
                 if (!isTelaoMode || !activeGuerreiroVideo) return;
 
@@ -286,9 +285,8 @@
                         let green = data[i + 1];
                         let blue = data[i + 2];
 
-                        // Remove a cor verde forte do fundo (Chroma Key)
                         if (green > 90 && red < 90 && blue < 90) {
-                            data[i + 3] = 0; // Torna transparente
+                            data[i + 3] = 0;
                         }
                     }
 
@@ -298,6 +296,10 @@
 
                 video.onplay = () => {
                     processFrame();
+                };
+
+                video.onended = () => {
+                    setActiveGuerreiroVideo(null);
                 };
 
                 return () => {
@@ -326,7 +328,7 @@
                             artist: currentActive.artist,
                             user: currentActive.user,
                             phone: currentActive.phone || '',
-                            reactions: { '🙉': 0, '❤️': 0, '👍': 0, '🥱': 0, '😂': 0, '👏': 0 },
+                            reactions: { '🙉': 0, '❤️': 0, '👍': 0, '👏': 0 },
                             reactedUsers: {},
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
@@ -946,13 +948,10 @@
                             return;
                         }
 
-                        const reactions = data.reactions || { '🙉': 0, '❤️': 0, '👍': 0, '🥱': 0, '😂': 0, '👏': 0 };
-                        
-                        // Soma exclusiva de ❤️ e 👏 para o ranking e destaque da noite
+                        const reactions = data.reactions || { '🙉': 0, '❤️': 0, '👍': 0, '👏': 0 };
                         const oldScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
                         
                         reactions[emojiSymbol] = (reactions[emojiSymbol] || 0) + 1;
-                        
                         const newScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
 
                         if (newScore >= 3 && Math.floor(newScore / 3) > Math.floor(oldScore / 3)) {
@@ -966,7 +965,7 @@
                             [`reactedUsers.${userPhone}`]: updatedUserEmojis
                         });
                     } else {
-                        const initialReactions = { '🙉': 0, '❤️': 0, '👍': 0, '🥱': 0, '😂': 0, '👏': 0 };
+                        const initialReactions = { '🙉': 0, '❤️': 0, '👍': 0, '👏': 0 };
                         initialReactions[emojiSymbol] = 1;
 
                         await historyRef.set({
@@ -992,8 +991,7 @@
             };
 
             const rankedHistory = history.map(item => {
-                const reactions = item.reactions || { '🙉': 0, '❤️': 0, '👍': 0, '🥱': 0, '😂': 0, '👏': 0 };
-                // Destaque da noite baseado exclusivamente nos votos de ❤️ e 👏
+                const reactions = item.reactions || { '🙉': 0, '❤️': 0, '👍': 0, '👏': 0 };
                 const totalScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
                 return { ...item, reactions, totalScore };
             }).sort((a, b) => b.totalScore - a.totalScore);
@@ -1006,7 +1004,7 @@
                 return React.createElement(
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
-                    // Vídeo oculto (fonte para o chroma key) e Canvas posicionado na parte inferior central do telão
+                    // Vídeo oculto para chroma key e canvas menor posicionado na parte inferior central
                     React.createElement('video', {
                         ref: hiddenVideoRef,
                         style: { display: 'none' },
@@ -1014,12 +1012,12 @@
                         playsInline: true,
                         crossOrigin: 'anonymous'
                     }),
-                    React.createElement(
+                    activeGuerreiroVideo && React.createElement(
                         'div',
-                        { className: 'absolute bottom-6 left-1/2 transform -translate-x-1/2 pointer-events-none z-40 flex items-center justify-center' },
+                        { className: 'absolute bottom-4 left-1/2 transform -translate-x-1/2 pointer-events-none z-40 flex items-center justify-center' },
                         React.createElement('canvas', {
                             ref: canvasRef,
-                            className: 'max-h-72 sm:max-h-96 w-auto drop-shadow-2xl'
+                            className: 'max-h-36 sm:max-h-48 w-auto drop-shadow-2xl'
                         })
                     ),
                     React.createElement(
@@ -1197,17 +1195,17 @@
                     React.createElement(
                         'div',
                         { className: 'pt-2 border-t border-red-500/20 flex flex-col items-center' },
-                        React.createElement('span', { className: 'text-xs font-bold text-amber-400 uppercase tracking-wider mb-2' }, isUserTheSinger ? '⚠️ Você é o cantor desta música (avaliação bloqueada)' : '⭐ Avalie a performance com emojis/reações:'),
+                        React.createElement('span', { className: 'text-xs font-bold text-amber-400 uppercase tracking-wider mb-2' }, isUserTheSinger ? '⚠️ Você é o cantor desta música (avaliação bloqueada)' : '⭐ Avalie a performance com as reações:'),
                         React.createElement(
                             'div',
                             { className: 'flex items-center justify-center gap-3 sm:gap-4 flex-wrap' },
-                            ['🙉', '👏', '❤️', '😲', '🥱', '😂'].map(emoji => {
+                            ['🙉', '👏', '❤️', '👍'].map(emoji => {
                                 const alreadyUsedThisEmoji = userUsedEmojis.includes(emoji);
                                 return React.createElement('button', {
                                     key: emoji,
                                     onClick: () => handleSendReaction(emoji),
                                     disabled: isUserTheSinger || alreadyUsedThisEmoji,
-                                    title: alreadyUsedThisEmoji ? 'Você já usou este emoji nesta música' : 'Enviar reação',
+                                    title: alreadyUsedThisEmoji ? 'Você já usou esta reação nesta música' : 'Enviar reação',
                                     className: `relative text-3xl sm:text-4xl p-3 rounded-2xl bg-zinc-950/85 border transition-all ${isUserTheSinger ? 'opacity-40 border-zinc-800 cursor-not-allowed' : alreadyUsedThisEmoji ? 'opacity-40 border-amber-500/50 cursor-not-allowed grayscale' : 'border-zinc-800 hover:border-amber-500 hover:scale-110 active:scale-90 shadow-lg'}`
                                 }, emoji, alreadyUsedThisEmoji && React.createElement('span', { className: 'absolute -top-1 -right-1 bg-amber-500 text-zinc-950 font-black text-[10px] w-5 h-5 rounded-full flex items-center justify-center shadow' }, '✓'));
                             })
@@ -1508,7 +1506,7 @@
                                 'div',
                                 { className: 'space-y-3' },
                                 rankedHistory.map((item, index) => {
-                                    const r = item.reactions || { '🙉': 0, '❤️': 0, '👍': 0, '🥱': 0, '😂': 0, '👏': 0 };
+                                    const r = item.reactions || { '🙉': 0, '❤️': 0, '👍': 0, '👏': 0 };
 
                                     return React.createElement(
                                         'div',
@@ -1535,9 +1533,7 @@
                                             React.createElement('span', null, `🙉 ${r['🙉'] || 0}`),
                                             React.createElement('span', null, `👏 ${r['👏'] || 0}`),
                                             React.createElement('span', null, `❤️ ${r['❤️'] || 0}`),
-                                            React.createElement('span', null, `😲 ${r['😲'] || 0}`),
-                                            React.createElement('span', null, `🥱 ${r['🥱'] || 0}`),
-                                            React.createElement('span', null, `😂 ${r['😂'] || 0}`)
+                                            React.createElement('span', null, `👍 ${r['👍'] || 0}`)
                                         )
                                     );
                                 })
