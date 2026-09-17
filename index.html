@@ -56,11 +56,11 @@
         }
         const db = firebase.firestore();
 
-        // Mapeamento original exato dos 3 vídeos do guerreirinho
+        // Mapeamento dos vídeos do guerreirinho (com o 👏 no lugar do 👍)
         const GUERREIRO_VIDEOS = {
             '🙉': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro1.mp4',
             '❤️': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro3.mp4',
-            '👍': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro2.mp4'
+            '👏': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro2.mp4'
         };
 
         function playBeep(isHigh = false) {
@@ -155,6 +155,93 @@
             return "";
         }
 
+        // Componente autônomo para cada guerreirinho flutuante nas bordas
+        function FloatingGuerreiro({ emoji, onFinish }) {
+            const canvasRef = useRef(null);
+            const videoRef = useRef(null);
+            const animRef = useRef(null);
+
+            // Posições pré-definidas nas bordas para evitar cobrir o centro da tela
+            const edgePositions = [
+                { bottom: '1rem', left: '2rem' },
+                { bottom: '1rem', right: '2rem' },
+                { top: '4rem', left: '2rem' },
+                { top: '4rem', right: '2rem' },
+                { bottom: '1rem', left: '35%' },
+                { bottom: '1rem', right: '35%' }
+            ];
+            const randomPos = useRef(edgePositions[Math.floor(Math.random() * edgePositions.length)]).current;
+
+            useEffect(() => {
+                const video = videoRef.current;
+                const canvas = canvasRef.current;
+                if (!video || !canvas) return;
+
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                video.src = GUERREIRO_VIDEOS[emoji];
+                video.currentTime = 0;
+                video.play().catch(e => console.error("Erro ao reproduzir guerreirinho flutuante:", e));
+
+                const processFrame = () => {
+                    if (video.paused || video.ended) {
+                        onFinish();
+                        return;
+                    }
+
+                    canvas.width = video.videoWidth || 320;
+                    canvas.height = video.videoHeight || 180;
+
+                    try {
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        let data = frame.data;
+
+                        for (let i = 0; i < data.length; i += 4) {
+                            let red = data[i];
+                            let green = data[i + 1];
+                            let blue = data[i + 2];
+
+                            if (green > 90 && red < 90 && blue < 90) {
+                                data[i + 3] = 0;
+                            }
+                        }
+
+                        ctx.putImageData(frame, 0, 0);
+                    } catch (err) {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    }
+                    animRef.current = requestAnimationFrame(processFrame);
+                };
+
+                video.onplay = () => { processFrame(); };
+                video.onended = () => { onFinish(); };
+
+                return () => {
+                    if (animRef.current) cancelAnimationFrame(animRef.current);
+                };
+            }, [emoji, onFinish]);
+
+            return React.createElement(
+                'div',
+                {
+                    className: 'absolute pointer-events-none z-40 flex items-center justify-center animate-bounce',
+                    style: randomPos
+                },
+                React.createElement('video', {
+                    ref: videoRef,
+                    style: { display: 'none' },
+                    muted: true,
+                    playsInline: true,
+                    crossOrigin: 'anonymous'
+                }),
+                React.createElement('canvas', {
+                    ref: canvasRef,
+                    className: 'max-h-28 sm:max-h-40 w-auto drop-shadow-2xl'
+                })
+            );
+        }
+
         function App() {
             const [user, setUser] = useState(() => {
                 const saved = localStorage.getItem('toca_karaoke_user');
@@ -194,12 +281,8 @@
             useEffect(() => { queueRef.current = queue; }, [queue]);
 
             const [history, setHistory] = useState([]);
-            const [activeGuerreiroVideo, setActiveGuerreiroVideo] = useState(null);
+            const [activeGuerreiros, setActiveGuerreiros] = useState([]); // Lista para múltiplos guerreiros nas bordas
             const [starMessages, setStarMessages] = useState([]);
-
-            const canvasRef = useRef(null);
-            const hiddenVideoRef = useRef(null);
-            const animFrameRef = useRef(null);
 
             const [isPaused, setIsPaused] = useState(false);
             const [isTelaoMode, setIsTelaoMode] = useState(false);
@@ -255,64 +338,6 @@
                 }
             }, []);
 
-            // Chroma Key e encerramento automático do vídeo do guerreirinho (lógica original)
-            useEffect(() => {
-                if (!isTelaoMode || !activeGuerreiroVideo) return;
-
-                const video = hiddenVideoRef.current;
-                const canvas = canvasRef.current;
-                if (!video || !canvas) return;
-
-                const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                video.src = GUERREIRO_VIDEOS[activeGuerreiroVideo];
-                video.currentTime = 0;
-                video.play().catch(e => console.error("Erro ao reproduzir vídeo do guerreiro:", e));
-
-                const processFrame = () => {
-                    if (video.paused || video.ended) {
-                        setActiveGuerreiroVideo(null);
-                        return;
-                    }
-
-                    canvas.width = video.videoWidth || 640;
-                    canvas.height = video.videoHeight || 360;
-
-                    try {
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                        let data = frame.data;
-
-                        for (let i = 0; i < data.length; i += 4) {
-                            let red = data[i];
-                            let green = data[i + 1];
-                            let blue = data[i + 2];
-
-                            if (green > 90 && red < 90 && blue < 90) {
-                                data[i + 3] = 0;
-                            }
-                        }
-
-                        ctx.putImageData(frame, 0, 0);
-                    } catch (err) {
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    }
-                    animFrameRef.current = requestAnimationFrame(processFrame);
-                };
-
-                video.onplay = () => {
-                    processFrame();
-                };
-
-                video.onended = () => {
-                    setActiveGuerreiroVideo(null);
-                };
-
-                return () => {
-                    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-                };
-            }, [isTelaoMode, activeGuerreiroVideo]);
-
             const triggerStarCelebration = () => {
                 const newMsgId = Date.now() + Math.random();
                 setStarMessages(prev => [...prev, newMsgId]);
@@ -334,7 +359,7 @@
                             artist: currentActive.artist,
                             user: currentActive.user,
                             phone: currentActive.phone || '',
-                            reactions: { '🙉': 0, '❤️': 0, '👍': 0 },
+                            reactions: { '🙉': 0, '❤️': 0, '👏': 0 },
                             reactedUsers: {},
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
@@ -384,7 +409,9 @@
                         const data = doc.data();
                         if (data && data.timestamp && (Date.now() - data.timestamp < 5000)) {
                             if (data.emoji && GUERREIRO_VIDEOS[data.emoji]) {
-                                setActiveGuerreiroVideo(data.emoji);
+                                // Adiciona um novo guerreirinho flutuante na tela sem atropelar os outros
+                                const newId = Date.now() + Math.random();
+                                setActiveGuerreiros(prev => [...prev, { id: newId, emoji: data.emoji }]);
                             }
                             if (data.type === 'stars') {
                                 triggerStarCelebration();
@@ -954,11 +981,11 @@
                             return;
                         }
 
-                        const reactions = data.reactions || { '🙉': 0, '❤️': 0, '👍': 0 };
-                        const oldScore = (reactions['❤️'] || 0) + (reactions['👍'] || 0);
+                        const reactions = data.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
+                        const oldScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
                         
                         reactions[emojiSymbol] = (reactions[emojiSymbol] || 0) + 1;
-                        const newScore = (reactions['❤️'] || 0) + (reactions['👍'] || 0);
+                        const newScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
 
                         if (newScore >= 3 && Math.floor(newScore / 3) > Math.floor(oldScore / 3)) {
                             shouldTriggerStars = true;
@@ -971,7 +998,7 @@
                             [`reactedUsers.${userPhone}`]: updatedUserEmojis
                         });
                     } else {
-                        const initialReactions = { '🙉': 0, '❤️': 0, '👍': 0 };
+                        const initialReactions = { '🙉': 0, '❤️': 0, '👏': 0 };
                         initialReactions[emojiSymbol] = 1;
 
                         await historyRef.set({
@@ -997,8 +1024,8 @@
             };
 
             const rankedHistory = history.map(item => {
-                const reactions = item.reactions || { '🙉': 0, '❤️': 0, '👍': 0 };
-                const totalScore = (reactions['❤️'] || 0) + (reactions['👍'] || 0);
+                const reactions = item.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
+                const totalScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
                 return { ...item, reactions, totalScore };
             }).sort((a, b) => b.totalScore - a.totalScore);
 
@@ -1010,22 +1037,18 @@
                 return React.createElement(
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
-                    // Vídeo oculto original para chroma key e canvas menor posicionado na parte inferior central
-                    React.createElement('video', {
-                        ref: hiddenVideoRef,
-                        style: { display: 'none' },
-                        muted: true,
-                        playsInline: true,
-                        crossOrigin: 'anonymous'
-                    }),
-                    activeGuerreiroVideo && React.createElement(
-                        'div',
-                        { className: 'absolute bottom-4 left-1/2 transform -translate-x-1/2 pointer-events-none z-40 flex items-center justify-center' },
-                        React.createElement('canvas', {
-                            ref: canvasRef,
-                            className: 'max-h-36 sm:max-h-48 w-auto drop-shadow-2xl'
+                    
+                    // Renderiza múltiplos guerreirinhos flutuando pelas bordas simultaneamente
+                    activeGuerreiros.map(g => 
+                        React.createElement(FloatingGuerreiro, {
+                            key: g.id,
+                            emoji: g.emoji,
+                            onFinish: () => {
+                                setActiveGuerreiros(prev => prev.filter(item => item.id !== g.id));
+                            }
                         })
                     ),
+
                     React.createElement(
                         'div',
                         { className: 'absolute inset-0 pointer-events-none overflow-hidden z-50 flex items-center justify-center' },
@@ -1205,7 +1228,7 @@
                         React.createElement(
                             'div',
                             { className: 'flex items-center justify-center gap-4 sm:gap-6' },
-                            ['🙉', '❤️', '👍'].map(emoji => {
+                            ['🙉', '❤️', '👏'].map(emoji => {
                                 const alreadyUsedThisEmoji = userUsedEmojis.includes(emoji);
                                 return React.createElement('button', {
                                     key: emoji,
@@ -1226,7 +1249,7 @@
                     React.createElement(
                         'div',
                         { className: 'flex-1 min-w-0' },
-                        React.createElement('span', { className: 'text-[11px] font-bold text-amber-400 uppercase tracking-widest block' }, 'Destaque da Noite (Mais ❤️ e 👍)'),
+                        React.createElement('span', { className: 'text-[11px] font-bold text-amber-400 uppercase tracking-widest block' }, 'Destaque da Noite (Mais ❤️ e 👏)'),
                         topSinger ? React.createElement(
                             'div',
                             { className: 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mt-0.5' },
@@ -1236,7 +1259,7 @@
                                 React.createElement('h3', { className: 'text-lg sm:text-xl font-extrabold text-zinc-100 truncate' }, topSinger.user),
                                 React.createElement('p', { className: 'text-xs text-zinc-400 truncate' }, `${topSinger.title} - ${topSinger.artist}`)
                             ),
-                            React.createElement('div', { className: 'self-start sm:self-auto bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold px-3 py-1 rounded-xl' }, `❤️ ${topSinger.reactions['❤️'] || 0} | 👍 ${topSinger.reactions['👍'] || 0}`)
+                            React.createElement('div', { className: 'self-start sm:self-auto bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold px-3 py-1 rounded-xl' }, `❤️ ${topSinger.reactions['❤️'] || 0} | 👏 ${topSinger.reactions['👏'] || 0}`)
                         ) : React.createElement('p', { className: 'text-sm text-zinc-400 mt-0.5' }, 'Ainda sem destaques. Envie reações para colocar alguém no topo!')
                     )
                 ),
@@ -1512,7 +1535,7 @@
                                 'div',
                                 { className: 'space-y-3' },
                                 rankedHistory.map((item, index) => {
-                                    const r = item.reactions || { '🙉': 0, '❤️': 0, '👍': 0 };
+                                    const r = item.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
 
                                     return React.createElement(
                                         'div',
@@ -1538,7 +1561,7 @@
                                             { className: 'bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-3' },
                                             React.createElement('span', null, `🙉 ${r['🙉'] || 0}`),
                                             React.createElement('span', null, `❤️ ${r['❤️'] || 0}`),
-                                            React.createElement('span', null, `👍 ${r['👍'] || 0}`)
+                                            React.createElement('span', null, `👏 ${r['👏'] || 0}`)
                                         )
                                     );
                                 })
