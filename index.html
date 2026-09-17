@@ -259,7 +259,7 @@
                 }
             }, []);
 
-            // Fila de reprodução dos vídeos do guerreirinho com Chroma Key por Canvas
+            // Fila de reprodução dos vídeos do guerreirinho
             const playNextGuerreiroInQueue = () => {
                 if (guerreiroQueueRef.current.length === 0) {
                     isPlayingGuerreiroRef.current = false;
@@ -404,7 +404,6 @@
                     setHistory(items);
                 });
 
-                // Ouvinte corrigido para disparar a animação instantaneamente ao receber qualquer alteração
                 const unsubCelebration = db.collection('settings').doc('celebration').onSnapshot(doc => {
                     if (doc.exists) {
                         const data = doc.data();
@@ -1009,7 +1008,6 @@
                         });
                     }
 
-                    // Envia o sinal atualizado para o documento celebration disparar imediatamente no telão
                     await db.collection('settings').doc('celebration').set({
                         emoji: emojiSymbol,
                         type: shouldTriggerStars ? 'stars' : 'reaction',
@@ -1035,10 +1033,10 @@
                 return React.createElement(
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
-                    // Vídeo mantido ATIVO nos bastidores com opacity-0 para Chroma Key rodar livremente
+                    // QUADRADO VERMELHO DE TESTE: Vídeo visível na tela para diagnóstico
                     React.createElement('video', {
                         ref: hiddenVideoRef,
-                        style: { position: 'absolute', opacity: 0, pointerEvents: 'none', width: '1px', height: '1px', zIndex: -10 },
+                        style: { position: 'fixed', top: '20px', left: '20px', width: '300px', height: 'auto', zIndex: 99999, border: '4px solid red', background: 'black' },
                         muted: true,
                         playsInline: true,
                         crossOrigin: 'anonymous'
