@@ -56,15 +56,6 @@
         }
         const db = firebase.firestore();
 
-        // Registrar Service Worker para Notificações e PWA
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/firebase-messaging-sw.js')
-                    .then(reg => console.log('Service Worker registrado com sucesso:', reg))
-                    .catch(err => console.error('Erro ao registrar Service Worker:', err));
-            });
-        }
-
         const GUERREIRO_VIDEOS = {
             '🙉': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro1.mp4',
             '❤️': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro3.mp4',
@@ -386,7 +377,6 @@
             const [isTelaoMutedState, setIsTelaoMutedState] = useState(false);
 
             const [showAdminMirror, setShowAdminMirror] = useState(false);
-            const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
             const [introCountdown, setIntroCountdown] = useState(null);
             const introTimerRef = useRef(null);
@@ -425,31 +415,12 @@
             const backgroundSongActiveRef = useRef(backgroundSongActive);
             useEffect(() => { backgroundSongActiveRef.current = backgroundSongActive; }, [backgroundSongActive]);
 
-            // Controle para disparar notificação apenas de novos pedidos após carregar
-            const isFirstQueueLoadRef = useRef(true);
-
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
                 if (params.get('telao') === 'true') {
                     setIsTelaoMode(true);
                 }
             }, []);
-
-            // Solicitar permissão de notificação no navegador
-            const handleEnableNotifications = async () => {
-                if (!('Notification' in window)) {
-                    alert('Este navegador não suporta notificações.');
-                    return;
-                }
-                const permission = await Notification.requestPermission();
-                if (permission === 'granted') {
-                    setNotificationsEnabled(true);
-                    alert('🔔 Notificações ativadas com sucesso!');
-                    new Notification('Toca do Guerreiro', { body: 'Você receberá alertas de novos pedidos aqui!' });
-                } else {
-                    alert('Permissão de notificação negada.');
-                }
-            };
 
             const triggerStarCelebration = () => {
                 const newMsgId = Date.now() + Math.random();
@@ -507,22 +478,6 @@
             useEffect(() => {
                 const unsubQueue = db.collection('queue').orderBy('createdAt', 'asc').onSnapshot(snapshot => {
                     const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    
-                    // Se o admin ativou notificações e não é o primeiro carregamento da página, avisa o novo pedido
-                    if (!isFirstQueueLoadRef.current && isAdmin && Notification.permission === 'granted' && items.length > queue.length) {
-                        // Encontra o item mais recente adicionado
-                        const newestItem = items[items.length - 1];
-                        if (newestItem) {
-                            navigator.serviceWorker.ready.then(reg => {
-                                reg.showNotification('🎵 Novo Pedido na Fila!', {
-                                    body: `${newestItem.user} pediu: "${newestItem.title}" (${newestItem.artist})`,
-                                    icon: 'manifest.json',
-                                    vibrate: [200, 100, 200]
-                                });
-                            });
-                        }
-                    }
-                    isFirstQueueLoadRef.current = false;
                     setQueue(items);
                 });
 
@@ -592,7 +547,7 @@
                     unsubUsers();
                     unsubMuted();
                 };
-            }, [isTelaoMode, isAdmin]);
+            }, [isTelaoMode]);
 
             useEffect(() => {
                 if (!isTelaoMode || !activePlayingSong || activePlayingSong.isBackground) return;
@@ -1338,11 +1293,10 @@
                     React.createElement('h3', { className: 'text-amber-400 font-bold text-base flex items-center gap-2' }, '👑 Painel de Administração'),
                     React.createElement(
                         'div',
-                        { className: 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2.5 items-center' },
+                        { className: 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 items-center' },
                         React.createElement('button', { onClick: openTelaoWindow, className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl text-xs flex items-center justify-center text-center' }, '🖥️ Telão'),
                         React.createElement('button', { onClick: () => setShowAdminMirror(!showAdminMirror), className: `${showAdminMirror ? 'bg-purple-600 text-zinc-100' : 'bg-zinc-800 text-purple-400 border border-purple-500/40'} font-bold px-3 py-2.5 rounded-xl text-xs text-center` }, showAdminMirror ? '👁️ Fechar Espelho' : '🖥️ Espelho Telão'),
                         React.createElement('button', { onClick: handleToggleTelaoPlayPause, className: `${isTelaoMutedState ? 'bg-emerald-500 text-zinc-950' : 'bg-red-500/20 text-red-400 border border-red-500/40'} font-bold px-3 py-2.5 rounded-xl text-xs text-center` }, isTelaoMutedState ? '▶️ Tocar Telão' : '⏸️ Pausar Telão'),
-                        React.createElement('button', { onClick: handleEnableNotifications, className: 'bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-2.5 rounded-xl text-xs text-center' }, '🔔 Notificações'),
                         React.createElement('button', { onClick: () => setShowUsersModal(true), className: 'bg-sky-500 hover:bg-sky-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl text-xs text-center' }, `👥 Usuários (${usersList.length})`),
                         React.createElement('button', { onClick: handleNextSong, className: 'bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl text-xs text-center' }, '⏭️ Próxima'),
                         React.createElement('button', { onClick: handleTogglePause, className: `${isPaused ? 'bg-emerald-500 text-zinc-950' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'} font-bold px-3 py-2.5 rounded-xl text-xs text-center` }, isPaused ? '▶️ Retomar' : '⏸️ Pausar Pedidos')
