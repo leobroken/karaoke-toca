@@ -475,7 +475,6 @@
                 };
             }, [isTelaoMode]);
 
-            // Dispara a contagem regressiva de 5 segundos para a música que está rodando no telão
             useEffect(() => {
                 if (!isTelaoMode || !activePlayingSong || activePlayingSong.isBackground) return;
                 
@@ -776,8 +775,26 @@
                         });
                     }
 
-                    const finalLink = await fetchYouTubeApiLink(songTitle.trim(), songArtist.trim());
-                    const videoId = getYouTubeVideoId(finalLink);
+                    // Verifica se já existe um link memorizado para essa música e artista
+                    const titleClean = songTitle.trim().toLowerCase();
+                    const artistClean = songArtist.trim().toLowerCase();
+                    const memoryDocId = `${artistClean}___${titleClean}`.replace(/[^a-z0-9]/g, '_');
+                    
+                    const memorySnap = await db.collection('memorizedLinks').doc(memoryDocId).get();
+                    
+                    let finalLink = "";
+                    let videoId = "";
+
+                    if (memorySnap.exists) {
+                        finalLink = memorySnap.data().youtubeLink;
+                        videoId = getYouTubeVideoId(finalLink);
+                    }
+
+                    // Se não tiver na memória, busca na API do YouTube normalmente
+                    if (!videoId) {
+                        finalLink = await fetchYouTubeApiLink(songTitle.trim(), songArtist.trim());
+                        videoId = getYouTubeVideoId(finalLink);
+                    }
 
                     if (!videoId) {
                         alert('Não foi possível encontrar um vídeo de karaokê adequado para esta música. Tente digitar o artista e o nome de outra forma.');
@@ -795,10 +812,8 @@
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
 
-                    // Adiciona sempre na fila de espera do Firestore
                     const docRef = await db.collection('queue').add(songData);
                     
-                    // CORREÇÃO: Só define como activePlaying imediatamente se NÃO houver nenhuma música tocando e nenhum item na fila antes deste
                     const isQueueEmptyBefore = queue.length === 0;
                     const isTelaoFree = !activePlayingSong || activePlayingSong.isBackground;
 
@@ -861,6 +876,46 @@
                 } catch (error) {
                     console.error("Erro ao salvar link: ", error);
                     alert('Erro ao salvar o link.');
+                }
+            };
+
+            // NOVA FUNÇÃO: Memorizar o link perfeito para esta música e artista
+            const handleMemorizeLink = async (song) => {
+                const linkToMemorize = youtubeInputs[song.id] !== undefined ? youtubeInputs[song.id] : (song.youtubeLink || '');
+                if (!linkToMemorize.trim()) {
+                    alert('Por favor, insira ou cole o link correto do YouTube antes de memorizar!');
+                    return;
+                }
+
+                const videoId = getYouTubeVideoId(linkToMemorize.trim());
+                if (!videoId) {
+                    alert('Link do YouTube inválido.');
+                    return;
+                }
+
+                try {
+                    const titleClean = song.title.trim().toLowerCase();
+                    const artistClean = song.artist.trim().toLowerCase();
+                    const memoryDocId = `${artistClean}___${titleClean}`.replace(/[^a-z0-9]/g, '_');
+
+                    await db.collection('memorizedLinks').doc(memoryDocId).set({
+                        title: song.title.trim(),
+                        artist: song.artist.trim(),
+                        youtubeLink: linkToMemorize.trim(),
+                        videoId: videoId,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    // Atualiza também o link na música atual da fila se necessário
+                    await db.collection('queue').doc(song.id).update({
+                        youtubeLink: linkToMemorize.trim(),
+                        videoId: videoId
+                    });
+
+                    alert(`🧠 Memorizado com sucesso!\n\nSempre que pedirem "${song.title}" de "${song.artist}", o sistema usará este link automaticamente!`);
+                } catch (error) {
+                    console.error("Erro ao memorizar link:", error);
+                    alert('Erro ao memorizar o link.');
                 }
             };
 
@@ -1539,7 +1594,11 @@
                                             }),
                                             React.createElement(
                                                 'div',
-                                                { className: 'flex items-center gap-2 w-full sm:w-auto justify-end' },
+                                                { className: 'flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap' },
+                                                React.createElement('button', {
+                                                    onClick: () => handleMemorizeLink(item),
+                                                    className: 'bg-purple-600 hover:bg-purple-700 text-zinc-100 font-bold text-xs px-3.5 py-2 rounded-xl transition-all shadow-md shadow-purple-600/20'
+                                                }, '🧠 Memorizar'),
                                                 React.createElement('button', {
                                                     onClick: () => handleSaveYouTubeLink(item.id),
                                                     className: 'bg-zinc-800 hover:bg-zinc-700 text-amber-400 border border-amber-500/30 font-semibold text-xs px-3 py-2 rounded-xl transition-all'
@@ -1760,7 +1819,7 @@
                     React.createElement(
                         'div',
                         { className: 'bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl' },
-                        React.createElement('h3', { className: 'test-lg font-bold text-zinc-100 mb-4' }, 'Editar Música da Fila'),
+                        React.createElement('h3', { className: 'text-lg font-bold text-zinc-100 mb-4' }, 'Editar Música da Fila'),
                         React.createElement(
                             'form',
                             { onSubmit: handleSaveEdit, className: 'space-y-4' },
