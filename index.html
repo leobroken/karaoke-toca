@@ -157,7 +157,6 @@
             const [history, setHistory] = useState([]);
             const [activeGuerreiroVideo, setActiveGuerreiroVideo] = useState(null);
             
-            // Fila de vídeos do guerreirinho para reprodução sequencial
             const guerreiroQueueRef = useRef([]);
             const isPlayingGuerreiroRef = useRef(false);
 
@@ -219,7 +218,6 @@
                 }
             }, []);
 
-            // Função para processar a fila sequencial de vídeos do guerreirinho com Chroma Key
             const playNextGuerreiroInQueue = () => {
                 if (guerreiroQueueRef.current.length === 0) {
                     isPlayingGuerreiroRef.current = false;
@@ -233,8 +231,9 @@
 
                 const video = hiddenVideoRef.current;
                 const canvas = canvasRef.current;
-                if (!video || !canvas) {
+                if (!video || !canvas || !GUERREIRO_VIDEOS[nextEmoji]) {
                     isPlayingGuerreiroRef.current = false;
+                    playNextGuerreiroInQueue();
                     return;
                 }
 
@@ -965,7 +964,6 @@
                 return React.createElement(
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
-                    // Vídeo oculto para chroma key e canvas menor posicionado na parte inferior central
                     React.createElement('video', {
                         ref: hiddenVideoRef,
                         style: { display: 'none' },
