@@ -507,8 +507,13 @@
                         const data = doc.data();
                         if (data && data.timestamp && (Date.now() - data.timestamp < 5000)) {
                             if (data.emoji && GUERREIRO_VIDEOS[data.emoji]) {
-                                const newId = Date.now() + Math.random();
-                                setActiveGuerreiros(prev => [...prev, { id: newId, emoji: data.emoji }]);
+                                // TRAVA DE SEGURANÇA: Só exibe o vídeo se já não houver outro guerreirinho do mesmo emoji ativo na tela
+                                setActiveGuerreiros(prev => {
+                                    const alreadyPlaying = prev.some(g => g.emoji === data.emoji);
+                                    if (alreadyPlaying) return prev; // Se já está passando, ignora para não sobrecarregar
+                                    const newId = Date.now() + Math.random();
+                                    return [...prev, { id: newId, emoji: data.emoji }];
+                                });
                             }
                             if (data.type === 'stars') {
                                 triggerStarCelebration();
