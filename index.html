@@ -23,6 +23,15 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Poppins', sans-serif; }
+        @keyframes popUpMessage {
+            0% { transform: scale(0.5) translateY(20px); opacity: 0; }
+            20% { transform: scale(1.1) translateY(0); opacity: 1; }
+            80% { transform: scale(1) translateY(-50px); opacity: 1; }
+            100% { transform: scale(0.9) translateY(-120px); opacity: 0; }
+        }
+        .floating-star-message {
+            animation: popUpMessage 3s ease-out forwards;
+        }
     </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen">
@@ -47,6 +56,7 @@
         }
         const db = firebase.firestore();
 
+        // Mapeamento exato dos 3 vídeos do guerreirinho hospedados no GitHub
         const GUERREIRO_VIDEOS = {
             '🙉': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro1.mp4',
             '👏': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro2.mp4',
@@ -72,6 +82,35 @@
                 osc.stop(ctx.currentTime + 0.4);
             } catch (e) {
                 console.error("Erro ao reproduzir bip:", e);
+            }
+        }
+
+        function playStarSound() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+
+                const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51]; 
+                notes.forEach((freq, index) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+
+                    osc.type = 'triangle';
+                    osc.frequency.value = freq;
+
+                    const startTime = ctx.currentTime + (index * 0.08);
+                    gain.gain.setValueAtTime(0.25, startTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.7);
+
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+
+                    osc.start(startTime);
+                    osc.stop(startTime + 0.7);
+                });
+            } catch (e) {
+                console.error("Erro ao reproduzir som de estrelas:", e);
             }
         }
 
@@ -157,8 +196,11 @@
             const [history, setHistory] = useState([]);
             const [activeGuerreiroVideo, setActiveGuerreiroVideo] = useState(null);
             
+            // Fila de vídeos do guerreirinho para não atropelar se apertarem rápido
             const guerreiroQueueRef = useRef([]);
             const isPlayingGuerreiroRef = useRef(false);
+
+            const [starMessages, setStarMessages] = useState([]);
 
             const canvasRef = useRef(null);
             const hiddenVideoRef = useRef(null);
@@ -218,6 +260,7 @@
                 }
             }, []);
 
+            // Gerenciador da Fila de Vídeos do Guerreirinho com Chroma Key
             const playNextGuerreiroInQueue = () => {
                 if (guerreiroQueueRef.current.length === 0) {
                     isPlayingGuerreiroRef.current = false;
@@ -261,7 +304,7 @@
                                     let green = data[i + 1];
                                     let blue = data[i + 2];
 
-                                    // Remove fundo verde (Chroma Key)
+                                    // Remove o fundo verde (Chroma Key)
                                     if (green > 90 && red < 90 && blue < 90) {
                                         data[i + 3] = 0;
                                     }
@@ -269,7 +312,6 @@
 
                                 ctx.putImageData(frame, 0, 0);
                             } catch (err) {
-                                // Fallback caso ocorra restrição de CORS no canvas
                                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                             }
@@ -288,13 +330,22 @@
                 };
             };
 
-            const triggerGuerreiroVideo = (emojiSymbol) => {
+            const enqueueGuerreiroVideo = (emojiSymbol) => {
                 if (!GUERREIRO_VIDEOS[emojiSymbol]) return;
                 guerreiroQueueRef.current.push(emojiSymbol);
 
                 if (!isPlayingGuerreiroRef.current) {
                     playNextGuerreiroInQueue();
                 }
+            };
+
+            const triggerStarCelebration = () => {
+                const newMsgId = Date.now() + Math.random();
+                setStarMessages(prev => [...prev, newMsgId]);
+                playStarSound();
+                setTimeout(() => {
+                    setStarMessages(prev => prev.filter(id => id !== newMsgId));
+                }, 3000);
             };
 
             const handleNextSong = async () => {
@@ -354,13 +405,15 @@
                     setHistory(items);
                 });
 
-                // Listener global de reações em tempo real para disparar imediatamente no telão
                 const unsubCelebration = db.collection('settings').doc('celebration').onSnapshot(doc => {
                     if (doc.exists && isTelaoMode) {
                         const data = doc.data();
-                        if (data && data.timestamp && (Date.now() - data.timestamp < 10000)) {
+                        if (data && data.timestamp && (Date.now() - data.timestamp < 6000)) {
                             if (data.emoji && GUERREIRO_VIDEOS[data.emoji]) {
-                                triggerGuerreiroVideo(data.emoji);
+                                enqueueGuerreiroVideo(data.emoji);
+                            }
+                            if (data.type === 'stars') {
+                                triggerStarCelebration();
                             }
                         }
                     }
@@ -915,6 +968,7 @@
                 
                 try {
                     const docSnap = await historyRef.get();
+                    let shouldTriggerStars = false;
 
                     if (docSnap.exists) {
                         const data = docSnap.data();
@@ -922,8 +976,18 @@
                         const userEmojis = reactedUsers[userPhone] || [];
 
                         if (userEmojis.includes(emojiSymbol)) {
-                            alert(`Você já utilizou o emoji ${emojiSymbol} nesta performance! Cada emoji pode ser usado uma única vez por música.`);
+                            alert(`Você já utilizou esta reação nesta performance! Cada reação pode ser usada uma única vez por música.`);
                             return;
+                        }
+
+                        const reactions = data.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
+                        const oldScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
+                        
+                        reactions[emojiSymbol] = (reactions[emojiSymbol] || 0) + 1;
+                        const newScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
+
+                        if (newScore >= 3 && Math.floor(newScore / 3) > Math.floor(oldScore / 3)) {
+                            shouldTriggerStars = true;
                         }
 
                         const updatedUserEmojis = [...userEmojis, emojiSymbol];
@@ -947,10 +1011,9 @@
                         });
                     }
 
-                    // Disparo instantâneo do gatilho para o telão exibir o vídeo do guerreirinho
                     await db.collection('settings').doc('celebration').set({
                         emoji: emojiSymbol,
-                        type: 'reaction',
+                        type: shouldTriggerStars ? 'stars' : 'reaction',
                         timestamp: Date.now()
                     });
 
@@ -973,7 +1036,7 @@
                 return React.createElement(
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
-                    // Elemento de vídeo oculto com crossorigin habilitado para evitar bloqueio de CORS do GitHub
+                    // Vídeo oculto com crossorigin habilitado para permitir Chroma Key sem travar CORS do GitHub
                     React.createElement('video', {
                         ref: hiddenVideoRef,
                         style: { display: 'none' },
@@ -983,10 +1046,25 @@
                     }),
                     activeGuerreiroVideo && React.createElement(
                         'div',
-                        { className: 'absolute bottom-6 left-1/2 transform -translate-x-1/2 pointer-events-none z-40 flex items-center justify-center' },
+                        { className: 'absolute bottom-4 left-1/2 transform -translate-x-1/2 pointer-events-none z-40 flex items-center justify-center' },
                         React.createElement('canvas', {
                             ref: canvasRef,
-                            className: 'max-h-40 sm:max-h-56 w-auto drop-shadow-2xl'
+                            className: 'max-h-36 sm:max-h-48 w-auto drop-shadow-2xl'
+                        })
+                    ),
+                    React.createElement(
+                        'div',
+                        { className: 'absolute inset-0 pointer-events-none overflow-hidden z-50 flex items-center justify-center' },
+                        starMessages.map((id) => {
+                            return React.createElement(
+                                'div',
+                                {
+                                    key: id,
+                                    className: 'absolute flex flex-col items-center floating-star-message bg-gradient-to-r from-amber-500/95 via-yellow-400/95 to-amber-600/95 border-2 border-yellow-200 text-zinc-950 font-black px-8 py-4 rounded-3xl shadow-2xl shadow-yellow-500/50 text-2xl sm:text-4xl tracking-wide text-center'
+                                },
+                                React.createElement('div', { className: 'flex gap-3 text-4xl sm:text-6xl mb-1 animate-bounce' }, '⭐', '🌟', '⭐'),
+                                'Tá mandando bem! 👏'
+                            );
                         })
                     ),
                     introCountdown ? React.createElement(
@@ -1152,15 +1230,15 @@
                         React.createElement('span', { className: 'text-xs font-bold text-amber-400 uppercase tracking-wider mb-2' }, isUserTheSinger ? '⚠️ Você é o cantor desta música (avaliação bloqueada)' : '⭐ Avalie a performance com as reações:'),
                         React.createElement(
                             'div',
-                            { className: 'flex items-center justify-center gap-3 sm:gap-4 flex-wrap' },
-                            ['🙉', '👏', '❤️'].map(emoji => {
+                            { className: 'flex items-center justify-center gap-4 sm:gap-6' },
+                            ['🙉', '❤️', '👏'].map(emoji => {
                                 const alreadyUsedThisEmoji = userUsedEmojis.includes(emoji);
                                 return React.createElement('button', {
                                     key: emoji,
                                     onClick: () => handleSendReaction(emoji),
                                     disabled: isUserTheSinger || alreadyUsedThisEmoji,
                                     title: alreadyUsedThisEmoji ? 'Você já usou esta reação nesta música' : 'Enviar reação',
-                                    className: `relative text-3xl sm:text-4xl p-3 rounded-2xl bg-zinc-950/85 border transition-all ${isUserTheSinger ? 'opacity-40 border-zinc-800 cursor-not-allowed' : alreadyUsedThisEmoji ? 'opacity-40 border-amber-500/50 cursor-not-allowed grayscale' : 'border-zinc-800 hover:border-amber-500 hover:scale-110 active:scale-90 shadow-lg'}`
+                                    className: `relative text-4xl sm:text-5xl p-4 rounded-2xl bg-zinc-950/85 border transition-all ${isUserTheSinger ? 'opacity-40 border-zinc-800 cursor-not-allowed' : alreadyUsedThisEmoji ? 'opacity-40 border-amber-500/50 cursor-not-allowed grayscale' : 'border-zinc-800 hover:border-amber-500 hover:scale-110 active:scale-90 shadow-lg'}`
                                 }, emoji, alreadyUsedThisEmoji && React.createElement('span', { className: 'absolute -top-1 -right-1 bg-amber-500 text-zinc-950 font-black text-[10px] w-5 h-5 rounded-full flex items-center justify-center shadow' }, '✓'));
                             })
                         )
@@ -1483,10 +1561,10 @@
                                         ),
                                         React.createElement(
                                             'div',
-                                            { className: 'bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-2.5 flex-wrap justify-end' },
+                                            { className: 'bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-3' },
                                             React.createElement('span', null, `🙉 ${r['🙉'] || 0}`),
-                                            React.createElement('span', null, `👏 ${r['👏'] || 0}`),
-                                            React.createElement('span', null, `❤️ ${r['❤️'] || 0}`)
+                                            React.createElement('span', null, `❤️ ${r['❤️'] || 0}`),
+                                            React.createElement('span', null, `👏 ${r['👏'] || 0}`)
                                         )
                                     );
                                 })
