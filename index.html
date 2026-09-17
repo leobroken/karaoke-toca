@@ -239,12 +239,12 @@
             );
         }
 
-        // Componente para o Mini Monitor Flutuante Arrastável do Admin
-        function FloatingAdminMonitor({ activePlayingSong, onClose }) {
+        // Componente para o Mini Espelhamento Real do Telão (Via Iframe Arrastável)
+        function FloatingTelaoMirror({ onClose }) {
             const [position, setPosition] = useState({ x: 20, y: 80 });
             const isDragging = useRef(false);
             const dragOffset = useRef({ x: 0, y: 0 });
-            const miniPlayerRef = useRef(null);
+            const containerRef = useRef(null);
 
             const handleTouchStart = (e) => {
                 isDragging.current = true;
@@ -293,42 +293,15 @@
                 };
             }, []);
 
-            useEffect(() => {
-                const videoId = activePlayingSong ? (activePlayingSong.videoId || getYouTubeVideoId(activePlayingSong.youtubeLink)) : null;
-                if (!videoId) return;
-
-                const initMiniPlayer = () => {
-                    if (window.YT && window.YT.Player) {
-                        if (window.miniYtPlayer && typeof window.miniYtPlayer.destroy === 'function') {
-                            try { window.miniYtPlayer.destroy(); } catch(e){}
-                        }
-                        window.miniYtPlayer = new YT.Player('mini-youtube-player', {
-                            height: '100%',
-                            width: '100%',
-                            videoId: videoId,
-                            playerVars: {
-                                'autoplay': 1,
-                                'controls': 0,
-                                'mute': 1, // Mutado no monitor do admin para não dar eco no bar
-                                'rel': 0
-                            }
-                        });
-                    }
-                };
-
-                if (!window.YT || !window.YT.Player) {
-                    setTimeout(initMiniPlayer, 1000);
-                } else {
-                    initMiniPlayer();
-                }
-            }, [activePlayingSong]);
+            // URL do telão atual com parâmetro para carregar espelhado
+            const telaoMirrorUrl = window.location.pathname + '?telao=true';
 
             return React.createElement(
                 'div',
                 {
-                    ref: miniPlayerRef,
+                    ref: containerRef,
                     style: { left: `${position.x}px`, top: `${position.y}px` },
-                    className: 'fixed z-50 w-72 bg-zinc-900 border-2 border-amber-500/80 rounded-2xl shadow-2xl overflow-hidden select-none'
+                    className: 'fixed z-50 w-80 bg-zinc-900 border-2 border-amber-500 rounded-2xl shadow-2xl overflow-hidden select-none'
                 },
                 // Barra Superior Arrastável
                 React.createElement(
@@ -336,26 +309,27 @@
                     {
                         onMouseDown: handleTouchStart,
                         onTouchStart: handleTouchStart,
-                        className: 'bg-amber-500 text-zinc-950 px-3 py-1.5 flex items-center justify-between cursor-move font-bold text-xs'
+                        className: 'bg-amber-500 text-zinc-950 px-3.5 py-2 flex items-center justify-between cursor-move font-extrabold text-xs'
                     },
-                    React.createElement('span', null, '👁️ Monitor Admin (Arraste)'),
+                    React.createElement('span', null, '🖥️ Espelho do Telão (Arraste aqui)'),
                     React.createElement('button', {
                         onClick: onClose,
-                        className: 'bg-zinc-950 text-amber-400 hover:bg-zinc-900 w-5 h-5 rounded-full flex items-center justify-center text-[10px]'
+                        className: 'bg-zinc-950 text-amber-400 hover:bg-zinc-900 w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shadow'
                     }, '✕')
                 ),
-                // Tela do Vídeo Miniatura
+                // Área do Iframe espelhando a tela do telão perfeitamente
                 React.createElement(
                     'div',
-                    { className: 'w-full aspect-video bg-black relative flex items-center justify-center' },
-                    React.createElement('div', { id: 'mini-youtube-player', className: 'w-full h-full pointer-events-none' }),
-                    !activePlayingSong && React.createElement('div', { className: 'absolute text-[11px] text-zinc-400 p-2 text-center' }, 'Telão aguardando...')
+                    { className: 'w-full aspect-video bg-black relative' },
+                    React.createElement('iframe', {
+                        src: telaoMirrorUrl,
+                        className: 'w-full h-full border-0 pointer-events-none'
+                    })
                 ),
-                // Informação do Cantor atual
                 React.createElement(
                     'div',
-                    { className: 'p-2 bg-zinc-950 text-[11px] text-zinc-300 truncate' },
-                    activePlayingSong ? React.createElement('span', null, 'Cantando: ', React.createElement('span', { className: 'text-amber-400 font-semibold' }, activePlayingSong.user)) : 'Nenhum cantor ativo'
+                    { className: 'px-3 py-1.5 bg-zinc-950 text-[10px] text-zinc-400 text-center font-medium' },
+                    'Transmissão ao vivo idêntica ao telão oficial'
                 )
             );
         }
@@ -410,8 +384,8 @@
             const [backgroundSongActive, setBackgroundSongActive] = useState(null);
             const [isTelaoMutedState, setIsTelaoMutedState] = useState(false);
 
-            // Estado para o mini monitor flutuante do Admin
-            const [showAdminMonitor, setShowAdminMonitor] = useState(false);
+            // Estado para o mini espelhamento do Admin
+            const [showAdminMirror, setShowAdminMirror] = useState(false);
 
             const [introCountdown, setIntroCountdown] = useState(null);
             const introTimerRef = useRef(null);
@@ -979,7 +953,7 @@
             const handleAdminLogout = () => {
                 localStorage.removeItem('toca_karaoke_admin');
                 setIsAdmin(false);
-                setShowAdminMonitor(false);
+                setShowAdminMirror(false);
             };
 
             const handleSaveYouTubeLink = async (songId) => {
@@ -1421,10 +1395,9 @@
                 'div',
                 { className: 'max-w-4xl mx-auto px-4 py-8 relative' },
                 
-                // Mini Monitor Flutuante do Admin Ativo
-                isAdmin && showAdminMonitor && React.createElement(FloatingAdminMonitor, {
-                    activePlayingSong: activePlayingSong,
-                    onClose: () => setShowAdminMonitor(false)
+                // Mini Espelhamento Real do Telão Ativo
+                isAdmin && showAdminMirror && React.createElement(FloatingTelaoMirror, {
+                    onClose: () => setShowAdminMirror(false)
                 }),
 
                 React.createElement('div', { className: 'w-full h-48 sm:h-72 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl mb-6' }, React.createElement('img', { src: 'banner.jpg', alt: 'Toca do Guerreiro Karaokê', className: 'w-full h-full object-cover object-center' })),
@@ -1537,9 +1510,9 @@
                             className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-500/10 text-xs flex items-center justify-center gap-1 text-center'
                         }, '🖥️ Telão'),
                         React.createElement('button', {
-                            onClick: () => setShowAdminMonitor(!showAdminMonitor),
-                            className: `${showAdminMonitor ? 'bg-purple-600 text-zinc-100' : 'bg-zinc-800 text-purple-400 border border-purple-500/40'} font-bold px-3 py-2.5 rounded-xl transition-all text-xs text-center`
-                        }, showAdminMonitor ? '👁️ Fechar Monitor' : '👁️ Monitor Telão'),
+                            onClick: () => setShowAdminMirror(!showAdminMirror),
+                            className: `${showAdminMirror ? 'bg-purple-600 text-zinc-100' : 'bg-zinc-800 text-purple-400 border border-purple-500/40'} font-bold px-3 py-2.5 rounded-xl transition-all text-xs text-center`
+                        }, showAdminMirror ? '👁️ Fechar Espelho' : '🖥️ Espelho Telão'),
                         React.createElement('button', {
                             onClick: handleToggleTelaoPlayPause,
                             className: `${isTelaoMutedState ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950' : 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40'} font-bold px-3 py-2.5 rounded-xl transition-all text-xs text-center`
@@ -1970,6 +1943,7 @@
                             React.createElement(
                                 'div',
                                 null,
+                                React.createElement('label', { className: 'block text-xs font-medium text-zinc-400 mb-1' }, 'Artista / Banda'),
                                 React.createElement('label', { className: 'block text-xs font-medium text-zinc-400 mb-1' }, 'Artista / Banda'),
                                 React.createElement('input', {
                                     type: 'text',
