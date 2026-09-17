@@ -56,7 +56,7 @@
         }
         const db = firebase.firestore();
 
-        // Mapeamento exato dos 3 vídeos do guerreirinho hospedados no GitHub
+        // Mapeamento correto dos vídeos do guerreirinho no GitHub
         const GUERREIRO_VIDEOS = {
             '🙉': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro1.mp4',
             '👏': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro2.mp4',
@@ -196,7 +196,6 @@
             const [history, setHistory] = useState([]);
             const [activeGuerreiroVideo, setActiveGuerreiroVideo] = useState(null);
             
-            // Fila de vídeos do guerreirinho para não atropelar se apertarem rápido
             const guerreiroQueueRef = useRef([]);
             const isPlayingGuerreiroRef = useRef(false);
 
@@ -260,7 +259,7 @@
                 }
             }, []);
 
-            // Gerenciador da Fila de Vídeos do Guerreirinho com Chroma Key
+            // Gerenciamento da fila de vídeos com Chroma Key ativo
             const playNextGuerreiroInQueue = () => {
                 if (guerreiroQueueRef.current.length === 0) {
                     isPlayingGuerreiroRef.current = false;
@@ -304,7 +303,7 @@
                                     let green = data[i + 1];
                                     let blue = data[i + 2];
 
-                                    // Remove o fundo verde (Chroma Key)
+                                    // Remove fundo verde (Chroma Key)
                                     if (green > 90 && red < 90 && blue < 90) {
                                         data[i + 3] = 0;
                                     }
@@ -1036,10 +1035,10 @@
                 return React.createElement(
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
-                    // Vídeo oculto com crossorigin habilitado para permitir Chroma Key sem travar CORS do GitHub
+                    // Vídeo mantido ATIVO nos bastidores com opacity-0 (sem display: none para permitir decodificação e Chroma Key)
                     React.createElement('video', {
                         ref: hiddenVideoRef,
-                        style: { display: 'none' },
+                        style: { position: 'absolute', opacity: 0, pointerEvents: 'none', width: '1px', height: '1px', zIndex: -10 },
                         muted: true,
                         playsInline: true,
                         crossOrigin: 'anonymous'
