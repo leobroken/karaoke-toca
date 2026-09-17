@@ -475,7 +475,7 @@
                 };
             }, [isTelaoMode]);
 
-            // Dispara a contagem regressiva de 5 segundos para QUALQUER música do cliente
+            // Dispara a contagem regressiva de 5 segundos para a música que está rodando no telão
             useEffect(() => {
                 if (!isTelaoMode || !activePlayingSong || activePlayingSong.isBackground) return;
                 
@@ -795,10 +795,14 @@
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
 
+                    // Adiciona sempre na fila de espera do Firestore
                     const docRef = await db.collection('queue').add(songData);
                     
-                    // CORREÇÃO: Força o activePlaying a atualizar imediatamente garantindo que o timestamp mude para disparar a contagem mesmo se o telão estava vazio ou com fundo
-                    if (videoId) {
+                    // CORREÇÃO: Só define como activePlaying imediatamente se NÃO houver nenhuma música tocando e nenhum item na fila antes deste
+                    const isQueueEmptyBefore = queue.length === 0;
+                    const isTelaoFree = !activePlayingSong || activePlayingSong.isBackground;
+
+                    if (isQueueEmptyBefore && isTelaoFree) {
                         await db.collection('settings').doc('activePlaying').set({ 
                             song: { id: docRef.id, ...songData, timestamp: Date.now() } 
                         });
@@ -806,7 +810,7 @@
 
                     setSongTitle('');
                     setSongArtist('');
-                    alert('Versão karaokê encontrada e enviada para o telão com sucesso! 🎤');
+                    alert('Versão karaokê encontrada e enviada para a fila / telão com sucesso! 🎤');
                 } catch (error) {
                     console.error("Erro ao adicionar música: ", error);
                     alert('Erro ao processar o pedido. Tente novamente.');
@@ -1756,7 +1760,7 @@
                     React.createElement(
                         'div',
                         { className: 'bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl' },
-                        React.createElement('h3', { className: 'text-lg font-bold text-zinc-100 mb-4' }, 'Editar Música da Fila'),
+                        React.createElement('h3', { className: 'test-lg font-bold text-zinc-100 mb-4' }, 'Editar Música da Fila'),
                         React.createElement(
                             'form',
                             { onSubmit: handleSaveEdit, className: 'space-y-4' },
@@ -1775,7 +1779,6 @@
                             React.createElement(
                                 'div',
                                 null,
-                                React.createElement('label', { className: 'block text-xs font-medium text-zinc-400 mb-1' }, 'Artista / Banda'),
                                 React.createElement('label', { className: 'block text-xs font-medium text-zinc-400 mb-1' }, 'Artista / Banda'),
                                 React.createElement('input', {
                                     type: 'text',
