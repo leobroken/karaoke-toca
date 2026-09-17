@@ -475,15 +475,15 @@
                 };
             }, [isTelaoMode]);
 
-            // Contagem regressiva de 5 segundos para QUALQUER música de cliente (inclusive a primeira da fila)
+            // Dispara a contagem regressiva de 5 segundos para QUALQUER música do cliente
             useEffect(() => {
-                if (!isTelaoMode || !activePlayingSong || backgroundSongActive || activePlayingSong.isBackground) return;
+                if (!isTelaoMode || !activePlayingSong || activePlayingSong.isBackground) return;
                 
                 const songUniqueKey = `${activePlayingSong.id || activePlayingSong.videoId}-${activePlayingSong.timestamp || 0}`;
                 if (lastSongIdProcessedRef.current === songUniqueKey) return;
                 lastSongIdProcessedRef.current = songUniqueKey;
 
-                let count = 5; // Ajustado para 5 segundos
+                let count = 5;
                 setIntroCountdown({ song: activePlayingSong, count: count });
                 playBeep(false);
 
@@ -585,7 +585,7 @@
                         if (currentPlaying.isBackground) {
                             ytPlayerRef.current.playVideo();
                         } else {
-                            ytPlayerRef.current.pauseVideo(); // Pausa para rodar a contagem regressiva de 5s
+                            ytPlayerRef.current.pauseVideo();
                         }
                     }
                     return;
@@ -622,7 +622,7 @@
                                     } else if (currentPlaying && currentPlaying.isBackground) {
                                         event.target.playVideo();
                                     } else {
-                                        event.target.pauseVideo(); // Pausa para iniciar a contagem regressiva de 5s
+                                        event.target.pauseVideo();
                                     }
                                 },
                                 'onStateChange': (event) => {
@@ -797,13 +797,11 @@
 
                     const docRef = await db.collection('queue').add(songData);
                     
-                    // Se a fila estava vazia (ou rodando fundo), este pedido se torna imediatamente o activePlaying e dispara a contagem!
-                    if (!activePlayingSong || backgroundSongActive || activePlayingSong.isBackground) {
-                        if (videoId) {
-                            await db.collection('settings').doc('activePlaying').set({ 
-                                song: { id: docRef.id, ...songData, timestamp: Date.now() } 
-                            });
-                        }
+                    // CORREÇÃO: Força o activePlaying a atualizar imediatamente garantindo que o timestamp mude para disparar a contagem mesmo se o telão estava vazio ou com fundo
+                    if (videoId) {
+                        await db.collection('settings').doc('activePlaying').set({ 
+                            song: { id: docRef.id, ...songData, timestamp: Date.now() } 
+                        });
                     }
 
                     setSongTitle('');
@@ -888,7 +886,7 @@
 
                     if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
                         ytPlayerRef.current.loadVideoById(videoId);
-                        ytPlayerRef.current.pauseVideo(); // Pausa para dar a contagem regressiva de 5s
+                        ytPlayerRef.current.pauseVideo();
                     }
 
                     setTimeout(async () => {
@@ -1777,6 +1775,7 @@
                             React.createElement(
                                 'div',
                                 null,
+                                React.createElement('label', { className: 'block text-xs font-medium text-zinc-400 mb-1' }, 'Artista / Banda'),
                                 React.createElement('label', { className: 'block text-xs font-medium text-zinc-400 mb-1' }, 'Artista / Banda'),
                                 React.createElement('input', {
                                     type: 'text',
