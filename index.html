@@ -56,11 +56,11 @@
         }
         const db = firebase.firestore();
 
-        // Mapeamento dos vídeos do GitHub protegidos com o proxy de CORS
+        // Mapeamento original exato dos 3 vídeos do guerreirinho
         const GUERREIRO_VIDEOS = {
-            '🙉': 'https://corsproxy.io/?' + encodeURIComponent('https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro1.mp4'),
-            '👏': 'https://corsproxy.io/?' + encodeURIComponent('https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro2.mp4'),
-            '❤️': 'https://corsproxy.io/?' + encodeURIComponent('https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro3.mp4')
+            '🙉': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro1.mp4',
+            '❤️': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro3.mp4',
+            '👍': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro2.mp4'
         };
 
         function playBeep(isHigh = false) {
@@ -195,10 +195,6 @@
 
             const [history, setHistory] = useState([]);
             const [activeGuerreiroVideo, setActiveGuerreiroVideo] = useState(null);
-            
-            const guerreiroQueueRef = useRef([]);
-            const isPlayingGuerreiroRef = useRef(false);
-
             const [starMessages, setStarMessages] = useState([]);
 
             const canvasRef = useRef(null);
@@ -259,84 +255,63 @@
                 }
             }, []);
 
-            // Fila de reprodução dos vídeos do guerreirinho
-            const playNextGuerreiroInQueue = () => {
-                if (guerreiroQueueRef.current.length === 0) {
-                    isPlayingGuerreiroRef.current = false;
-                    setActiveGuerreiroVideo(null);
-                    return;
-                }
-
-                isPlayingGuerreiroRef.current = true;
-                const nextEmoji = guerreiroQueueRef.current.shift();
-                setActiveGuerreiroVideo(nextEmoji);
+            // Chroma Key e encerramento automático do vídeo do guerreirinho (lógica original)
+            useEffect(() => {
+                if (!isTelaoMode || !activeGuerreiroVideo) return;
 
                 const video = hiddenVideoRef.current;
                 const canvas = canvasRef.current;
-                if (!video || !canvas || !GUERREIRO_VIDEOS[nextEmoji]) {
-                    isPlayingGuerreiroRef.current = false;
-                    playNextGuerreiroInQueue();
-                    return;
-                }
+                if (!video || !canvas) return;
 
                 const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                video.src = GUERREIRO_VIDEOS[nextEmoji];
+                video.src = GUERREIRO_VIDEOS[activeGuerreiroVideo];
                 video.currentTime = 0;
-                
-                video.play().then(() => {
-                    const processFrame = () => {
-                        if (video.paused || video.ended) {
-                            return;
-                        }
+                video.play().catch(e => console.error("Erro ao reproduzir vídeo do guerreiro:", e));
 
-                        if (video.videoWidth > 0 && video.videoHeight > 0) {
-                            canvas.width = video.videoWidth;
-                            canvas.height = video.videoHeight;
+                const processFrame = () => {
+                    if (video.paused || video.ended) {
+                        setActiveGuerreiroVideo(null);
+                        return;
+                    }
 
-                            try {
-                                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                                let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                                let data = frame.data;
+                    canvas.width = video.videoWidth || 640;
+                    canvas.height = video.videoHeight || 360;
 
-                                for (let i = 0; i < data.length; i += 4) {
-                                    let red = data[i];
-                                    let green = data[i + 1];
-                                    let blue = data[i + 2];
+                    try {
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        let data = frame.data;
 
-                                    // Remove o fundo verde (Chroma Key)
-                                    if (green > 90 && red < 90 && blue < 90) {
-                                        data[i + 3] = 0;
-                                    }
-                                }
+                        for (let i = 0; i < data.length; i += 4) {
+                            let red = data[i];
+                            let green = data[i + 1];
+                            let blue = data[i + 2];
 
-                                ctx.putImageData(frame, 0, 0);
-                            } catch (err) {
-                                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                            if (green > 90 && red < 90 && blue < 90) {
+                                data[i + 3] = 0;
                             }
                         }
-                        animFrameRef.current = requestAnimationFrame(processFrame);
-                    };
+
+                        ctx.putImageData(frame, 0, 0);
+                    } catch (err) {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    }
+                    animFrameRef.current = requestAnimationFrame(processFrame);
+                };
+
+                video.onplay = () => {
                     processFrame();
-                }).catch(e => {
-                    console.error("Erro ao reproduzir vídeo do guerreiro:", e);
-                    playNextGuerreiroInQueue();
-                });
+                };
 
                 video.onended = () => {
-                    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-                    playNextGuerreiroInQueue();
+                    setActiveGuerreiroVideo(null);
                 };
-            };
 
-            const enqueueGuerreiroVideo = (emojiSymbol) => {
-                if (!GUERREIRO_VIDEOS[emojiSymbol]) return;
-                guerreiroQueueRef.current.push(emojiSymbol);
-
-                if (!isPlayingGuerreiroRef.current) {
-                    playNextGuerreiroInQueue();
-                }
-            };
+                return () => {
+                    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+                };
+            }, [isTelaoMode, activeGuerreiroVideo]);
 
             const triggerStarCelebration = () => {
                 const newMsgId = Date.now() + Math.random();
@@ -359,7 +334,7 @@
                             artist: currentActive.artist,
                             user: currentActive.user,
                             phone: currentActive.phone || '',
-                            reactions: { '🙉': 0, '❤️': 0, '👏': 0 },
+                            reactions: { '🙉': 0, '❤️': 0, '👍': 0 },
                             reactedUsers: {},
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
@@ -405,13 +380,15 @@
                 });
 
                 const unsubCelebration = db.collection('settings').doc('celebration').onSnapshot(doc => {
-                    if (doc.exists) {
+                    if (doc.exists && isTelaoMode) {
                         const data = doc.data();
-                        if (data && data.emoji && GUERREIRO_VIDEOS[data.emoji]) {
-                            enqueueGuerreiroVideo(data.emoji);
-                        }
-                        if (data && data.type === 'stars') {
-                            triggerStarCelebration();
+                        if (data && data.timestamp && (Date.now() - data.timestamp < 5000)) {
+                            if (data.emoji && GUERREIRO_VIDEOS[data.emoji]) {
+                                setActiveGuerreiroVideo(data.emoji);
+                            }
+                            if (data.type === 'stars') {
+                                triggerStarCelebration();
+                            }
                         }
                     }
                 });
@@ -475,7 +452,7 @@
                     unsubUsers();
                     unsubMuted();
                 };
-            }, []);
+            }, [isTelaoMode]);
 
             useEffect(() => {
                 if (!isTelaoMode || !activePlayingSong || backgroundSongActive) return;
@@ -977,11 +954,11 @@
                             return;
                         }
 
-                        const reactions = data.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
-                        const oldScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
+                        const reactions = data.reactions || { '🙉': 0, '❤️': 0, '👍': 0 };
+                        const oldScore = (reactions['❤️'] || 0) + (reactions['👍'] || 0);
                         
                         reactions[emojiSymbol] = (reactions[emojiSymbol] || 0) + 1;
-                        const newScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
+                        const newScore = (reactions['❤️'] || 0) + (reactions['👍'] || 0);
 
                         if (newScore >= 3 && Math.floor(newScore / 3) > Math.floor(oldScore / 3)) {
                             shouldTriggerStars = true;
@@ -994,7 +971,7 @@
                             [`reactedUsers.${userPhone}`]: updatedUserEmojis
                         });
                     } else {
-                        const initialReactions = { '🙉': 0, '❤️': 0, '👏': 0 };
+                        const initialReactions = { '🙉': 0, '❤️': 0, '👍': 0 };
                         initialReactions[emojiSymbol] = 1;
 
                         await historyRef.set({
@@ -1020,8 +997,8 @@
             };
 
             const rankedHistory = history.map(item => {
-                const reactions = item.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
-                const totalScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
+                const reactions = item.reactions || { '🙉': 0, '❤️': 0, '👍': 0 };
+                const totalScore = (reactions['❤️'] || 0) + (reactions['👍'] || 0);
                 return { ...item, reactions, totalScore };
             }).sort((a, b) => b.totalScore - a.totalScore);
 
@@ -1033,10 +1010,10 @@
                 return React.createElement(
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-4 overflow-hidden select-none relative' },
-                    // Vídeo mantido nos bastidores com opacity-0 para Chroma Key rodar livremente via proxy de CORS
+                    // Vídeo oculto original para chroma key e canvas menor posicionado na parte inferior central
                     React.createElement('video', {
                         ref: hiddenVideoRef,
-                        style: { position: 'absolute', opacity: 0, pointerEvents: 'none', width: '1px', height: '1px', zIndex: -10 },
+                        style: { display: 'none' },
                         muted: true,
                         playsInline: true,
                         crossOrigin: 'anonymous'
@@ -1228,7 +1205,7 @@
                         React.createElement(
                             'div',
                             { className: 'flex items-center justify-center gap-4 sm:gap-6' },
-                            ['🙉', '❤️', '👏'].map(emoji => {
+                            ['🙉', '❤️', '👍'].map(emoji => {
                                 const alreadyUsedThisEmoji = userUsedEmojis.includes(emoji);
                                 return React.createElement('button', {
                                     key: emoji,
@@ -1249,7 +1226,7 @@
                     React.createElement(
                         'div',
                         { className: 'flex-1 min-w-0' },
-                        React.createElement('span', { className: 'text-[11px] font-bold text-amber-400 uppercase tracking-widest block' }, 'Destaque da Noite (Mais ❤️ e 👏)'),
+                        React.createElement('span', { className: 'text-[11px] font-bold text-amber-400 uppercase tracking-widest block' }, 'Destaque da Noite (Mais ❤️ e 👍)'),
                         topSinger ? React.createElement(
                             'div',
                             { className: 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mt-0.5' },
@@ -1259,7 +1236,7 @@
                                 React.createElement('h3', { className: 'text-lg sm:text-xl font-extrabold text-zinc-100 truncate' }, topSinger.user),
                                 React.createElement('p', { className: 'text-xs text-zinc-400 truncate' }, `${topSinger.title} - ${topSinger.artist}`)
                             ),
-                            React.createElement('div', { className: 'self-start sm:self-auto bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold px-3 py-1 rounded-xl' }, `❤️ ${topSinger.reactions['❤️'] || 0} | 👏 ${topSinger.reactions['👏'] || 0}`)
+                            React.createElement('div', { className: 'self-start sm:self-auto bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold px-3 py-1 rounded-xl' }, `❤️ ${topSinger.reactions['❤️'] || 0} | 👍 ${topSinger.reactions['👍'] || 0}`)
                         ) : React.createElement('p', { className: 'text-sm text-zinc-400 mt-0.5' }, 'Ainda sem destaques. Envie reações para colocar alguém no topo!')
                     )
                 ),
@@ -1535,7 +1512,7 @@
                                 'div',
                                 { className: 'space-y-3' },
                                 rankedHistory.map((item, index) => {
-                                    const r = item.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
+                                    const r = item.reactions || { '🙉': 0, '❤️': 0, '👍': 0 };
 
                                     return React.createElement(
                                         'div',
@@ -1561,7 +1538,7 @@
                                             { className: 'bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-3' },
                                             React.createElement('span', null, `🙉 ${r['🙉'] || 0}`),
                                             React.createElement('span', null, `❤️ ${r['❤️'] || 0}`),
-                                            React.createElement('span', null, `👏 ${r['👏'] || 0}`)
+                                            React.createElement('span', null, `👍 ${r['👍'] || 0}`)
                                         )
                                     );
                                 })
