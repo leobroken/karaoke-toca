@@ -424,6 +424,7 @@
             const currentVideoIdRef = useRef(null);
             const lastSongIdProcessedRef = useRef(null);
             const checkEndIntervalRef = useRef(null);
+            const isTransitioningRef = useRef(false); // TRAVA CONTRA DUPLO DISPARO
 
             const activePlayingSongRef = useRef(activePlayingSong);
             useEffect(() => { activePlayingSongRef.current = activePlayingSong; }, [activePlayingSong]);
@@ -447,47 +448,64 @@
                 }, 3000);
             };
 
+            // FUNÇÃO BLINDADA PARA AVANÇAR A MÚSCADA MANTENDO A ORDEM CRONOLÓGICA EXATA
             const handleNextSong = async () => {
-                const currentQueue = queueRef.current;
-                const currentActive = activePlayingSongRef.current;
-                const currentBg = backgroundSongActiveRef.current;
-                
-                if (currentActive && currentActive.id && !currentBg && !currentActive.isBackground) {
-                    try {
-                        await db.collection('history').add({
-                            title: currentActive.title,
-                            artist: currentActive.artist,
-                            user: currentActive.user,
-                            phone: currentActive.phone || '',
-                            reactions: { '🙉': 0, '❤️': 0, '👏': 0 },
-                            reactedUsers: {},
-                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                        });
-                    } catch (err) {
-                        console.error("Erro ao salvar histórico ao avançar:", err);
-                    }
-                }
+                if (isTransitioningRef.current) return;
+                isTransitioningRef.current = true;
 
-                if (currentQueue.length === 0) {
-                    await db.collection('settings').doc('activePlaying').set({ song: null });
-                    return;
-                }
-
-                const current = currentQueue[0];
                 try {
-                    await db.collection('queue').doc(current.id).delete();
+                    const currentActive = activePlayingSongRef.current;
+                    const currentBg = backgroundSongActiveRef.current;
+                    
+                    // 1. Salva a música atual no histórico se não for som ambiente
+                    if (currentActive && currentActive.id && !currentBg && !currentActive.isBackground) {
+                        try {
+                            await db.collection('history').add({
+                                title: currentActive.title,
+                                artist: currentActive.artist,
+                                user: currentActive.user,
+                                phone: currentActive.phone || '',
+                                reactions: { '🙉': 0, '❤️': 0, '👏': 0 },
+                                reactedUsers: {},
+                                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                            });
+                        } catch (err) {
+                            console.error("Erro ao salvar histórico:", err);
+                        }
+                    }
 
-                    const nextSong = currentQueue.length > 1 ? currentQueue[1] : null;
-                    if (nextSong && nextSong.youtubeLink) {
-                        const videoId = getYouTubeVideoId(nextSong.youtubeLink);
+                    // 2. Busca diretamente do Firestore a fila ordenada rigorosamente por data (createdAt asc)
+                    const snapshot = await db.collection('queue').orderBy('createdAt', 'asc').get();
+                    const freshQueue = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    if (freshQueue.length === 0) {
+                        await db.collection('settings').doc('activePlaying').set({ song: null });
+                        isTransitioningRef.current = false;
+                        return;
+                    }
+
+                    // A primeira música exata da fila
+                    const currentPlayingFromQueue = freshQueue[0];
+                    // Deleta estritamente esta primeira música
+                    await db.collection('queue').doc(currentPlayingFromQueue.id).delete();
+
+                    // Verifica qual é a próxima real (a que agora virou a primeira da fila)
+                    const nextPlayingFromQueue = freshQueue.length > 1 ? freshQueue[1] : null;
+
+                    if (nextPlayingFromQueue && nextPlayingFromQueue.youtubeLink) {
+                        const videoId = getYouTubeVideoId(nextPlayingFromQueue.youtubeLink);
                         await db.collection('settings').doc('activePlaying').set({ 
-                            song: { ...nextSong, videoId: videoId, timestamp: Date.now() } 
+                            song: { ...nextPlayingFromQueue, videoId: videoId, timestamp: Date.now() } 
                         });
                     } else {
                         await db.collection('settings').doc('activePlaying').set({ song: null });
                     }
                 } catch (error) {
-                    console.error("Erro ao avançar música: ", error);
+                    console.error("Erro ao avançar música na fila: ", error);
+                } finally {
+                    setTimeout(() => {
+                        isTransitioningRef.current = false;
+                    }, 1000);
                 }
             };
 
@@ -614,7 +632,7 @@
                 }
             }, [queue, backgroundSongActive, activePlayingSong]);
 
-            // SISTEMA ROBUSTO DE DETECÇÃO DE FIM DE VÍDEO (Evita telão travado)
+            // SISTEMA DE DETECÇÃO DE FIM DE VÍDEO
             useEffect(() => {
                 if (!isTelaoMode) return;
                 if (checkEndIntervalRef.current) clearInterval(checkEndIntervalRef.current);
@@ -629,9 +647,7 @@
                             db.collection('settings').doc('backgroundSong').update({ 'song.savedTime': currentTime }).catch(() => {});
                         }
 
-                        // Se faltar menos de 1 segundo para acabar ou se por algum motivo passou do tempo total
                         if (duration > 0 && currentTime > 0 && ((duration - currentTime < 1.0) || (currentTime >= duration))) {
-                            clearInterval(checkEndIntervalRef.current);
                             if (!currentActive || !currentActive.isBackground) {
                                 handleNextSong();
                             } else {
@@ -868,7 +884,6 @@
 
                     const docRef = await db.collection('queue').add(songData);
                     
-                    // CORREÇÃO: Garante verificação se o telão está livre para puxar imediatamente
                     const queueSnapshot = await db.collection('queue').orderBy('createdAt', 'asc').get();
                     const freshQueue = queueSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     
@@ -1599,7 +1614,7 @@
                                 'div',
                                 { className: 'flex gap-3' },
                                 React.createElement('button', { type: 'button', onClick: () => setAdminModal(false), className: 'w-1/2 bg-zinc-800 text-zinc-300 font-medium py-3 rounded-xl text-sm' }, 'Cancelar'),
-                                React.createElement('button', { type: 'submit', className: 'w-1/2 bg-amber-500 text-zinc-950 font-bold py-3 rounded-xl shadow-lg text-sm' }, 'Entrar')
+                                React.createElement('button', { type: 'submit', className: 'w-1/2 bg-amber-500 text-zinc-950 font-bold py-3 rounded-xl text-sm shadow-lg' }, 'Entrar')
                             )
                         )
                     )
