@@ -507,10 +507,9 @@
                         const data = doc.data();
                         if (data && data.timestamp && (Date.now() - data.timestamp < 5000)) {
                             if (data.emoji && GUERREIRO_VIDEOS[data.emoji]) {
-                                // TRAVA DE SEGURANÇA: Só exibe o vídeo se já não houver outro guerreirinho do mesmo emoji ativo na tela
                                 setActiveGuerreiros(prev => {
                                     const alreadyPlaying = prev.some(g => g.emoji === data.emoji);
-                                    if (alreadyPlaying) return prev; // Se já está passando, ignora para não sobrecarregar
+                                    if (alreadyPlaying) return prev;
                                     const newId = Date.now() + Math.random();
                                     return [...prev, { id: newId, emoji: data.emoji }];
                                 });
@@ -615,6 +614,7 @@
                 }
             }, [queue, backgroundSongActive, activePlayingSong]);
 
+            // SISTEMA ROBUSTO DE DETECÇÃO DE FIM DE VÍDEO (Evita telão travado)
             useEffect(() => {
                 if (!isTelaoMode) return;
                 if (checkEndIntervalRef.current) clearInterval(checkEndIntervalRef.current);
@@ -629,10 +629,12 @@
                             db.collection('settings').doc('backgroundSong').update({ 'song.savedTime': currentTime }).catch(() => {});
                         }
 
-                        if (duration > 0 && currentTime > 0 && (duration - currentTime < 0.8)) {
+                        // Se faltar menos de 1 segundo para acabar ou se por algum motivo passou do tempo total
+                        if (duration > 0 && currentTime > 0 && ((duration - currentTime < 1.0) || (currentTime >= duration))) {
                             clearInterval(checkEndIntervalRef.current);
-                            if (!currentActive || !currentActive.isBackground) handleNextSong();
-                            else {
+                            if (!currentActive || !currentActive.isBackground) {
+                                handleNextSong();
+                            } else {
                                 ytPlayerRef.current.seekTo(0);
                                 ytPlayerRef.current.playVideo();
                             }
@@ -865,10 +867,16 @@
                     };
 
                     const docRef = await db.collection('queue').add(songData);
-                    const isQueueEmptyBefore = queue.length === 0;
-                    const isTelaoFree = !activePlayingSong || activePlayingSong.isBackground;
+                    
+                    // CORREÇÃO: Garante verificação se o telão está livre para puxar imediatamente
+                    const queueSnapshot = await db.collection('queue').orderBy('createdAt', 'asc').get();
+                    const freshQueue = queueSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    
+                    const activePlayingDoc = await db.collection('settings').doc('activePlaying').get();
+                    const currentActive = activePlayingDoc.exists ? activePlayingDoc.data().song : null;
+                    const isTelaoFree = !currentActive || currentActive.isBackground;
 
-                    if (isQueueEmptyBefore && isTelaoFree) {
+                    if (freshQueue.length === 1 && isTelaoFree) {
                         await db.collection('settings').doc('activePlaying').set({ 
                             song: { id: docRef.id, ...songData, timestamp: Date.now() } 
                         });
