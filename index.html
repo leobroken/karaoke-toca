@@ -347,6 +347,39 @@
         }
 
         function App() {
+            // WAKE LOCK API: Mantém a tela do tablet acesa enquanto o app estiver aberto
+            useEffect(() => {
+                let wakeLock = null;
+
+                const requestWakeLock = async () => {
+                    try {
+                        if ('wakeLock' in navigator) {
+                            wakeLock = await navigator.wakeLock.request('screen');
+                            console.log('Wake Lock ativado: a tela não vai apagar.');
+                        }
+                    } catch (err) {
+                        console.error(`Erro ao ativar o Wake Lock: ${err.name}, ${err.message}`);
+                    }
+                };
+
+                requestWakeLock();
+
+                const handleVisibilityChange = () => {
+                    if (wakeLock !== null && document.visibilityState === 'visible') {
+                        requestWakeLock();
+                    }
+                };
+
+                document.addEventListener('visibilitychange', handleVisibilityChange);
+
+                return () => {
+                    if (wakeLock !== null) {
+                        wakeLock.release().catch(() => {});
+                    }
+                    document.removeEventListener('visibilitychange', handleVisibilityChange);
+                };
+            }, []);
+
             const [user, setUser] = useState(() => {
                 const saved = localStorage.getItem('toca_karaoke_user');
                 if (saved) {
@@ -424,7 +457,7 @@
             const currentVideoIdRef = useRef(null);
             const lastSongIdProcessedRef = useRef(null);
             const checkEndIntervalRef = useRef(null);
-            const isTransitioningRef = useRef(false); // TRAVA CONTRA DUPLO DISPARO
+            const isTransitioningRef = useRef(false);
 
             const activePlayingSongRef = useRef(activePlayingSong);
             useEffect(() => { activePlayingSongRef.current = activePlayingSong; }, [activePlayingSong]);
@@ -448,7 +481,6 @@
                 }, 3000);
             };
 
-            // FUNÇÃO BLINDADA PARA AVANÇAR A MÚSCADA MANTENDO A ORDEM CRONOLÓGICA EXATA
             const handleNextSong = async () => {
                 if (isTransitioningRef.current) return;
                 isTransitioningRef.current = true;
@@ -457,7 +489,6 @@
                     const currentActive = activePlayingSongRef.current;
                     const currentBg = backgroundSongActiveRef.current;
                     
-                    // 1. Salva a música atual no histórico se não for som ambiente
                     if (currentActive && currentActive.id && !currentBg && !currentActive.isBackground) {
                         try {
                             await db.collection('history').add({
@@ -474,7 +505,6 @@
                         }
                     }
 
-                    // 2. Busca diretamente do Firestore a fila ordenada rigorosamente por data (createdAt asc)
                     const snapshot = await db.collection('queue').orderBy('createdAt', 'asc').get();
                     const freshQueue = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
@@ -484,12 +514,9 @@
                         return;
                     }
 
-                    // A primeira música exata da fila
                     const currentPlayingFromQueue = freshQueue[0];
-                    // Deleta estritamente esta primeira música
                     await db.collection('queue').doc(currentPlayingFromQueue.id).delete();
 
-                    // Verifica qual é a próxima real (a que agora virou a primeira da fila)
                     const nextPlayingFromQueue = freshQueue.length > 1 ? freshQueue[1] : null;
 
                     if (nextPlayingFromQueue && nextPlayingFromQueue.youtubeLink) {
@@ -632,7 +659,6 @@
                 }
             }, [queue, backgroundSongActive, activePlayingSong]);
 
-            // SISTEMA DE DETECÇÃO DE FIM DE VÍDEO
             useEffect(() => {
                 if (!isTelaoMode) return;
                 if (checkEndIntervalRef.current) clearInterval(checkEndIntervalRef.current);
