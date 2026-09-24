@@ -2,7 +2,7 @@
   "name": "Karaokê Toca do Guerreiro",
   "short_name": "Karaokê Toca",
   "start_url": "./index.html",
-  "display": "standalone",
+  "display": "fullscreen",
   "background_color": "#09090b",
   "theme_color": "#f59e0b",
   "icons": [
