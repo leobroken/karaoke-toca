@@ -355,7 +355,6 @@
                     try {
                         if ('wakeLock' in navigator) {
                             wakeLock = await navigator.wakeLock.request('screen');
-                            console.log('Wake Lock ativado: a tela não vai apagar.');
                         }
                     } catch (err) {
                         console.error(`Erro ao ativar o Wake Lock: ${err.name}, ${err.message}`);
@@ -379,6 +378,39 @@
                     document.removeEventListener('visibilitychange', handleVisibilityChange);
                 };
             }, []);
+
+            const [isTelaoMode, setIsTelaoMode] = useState(false);
+
+            // FULLSCREEN AUTOMÁTICO NO MODO TELÃO
+            useEffect(() => {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('telao') === 'true') {
+                    setIsTelaoMode(true);
+                }
+            }, []);
+
+            useEffect(() => {
+                if (isTelaoMode) {
+                    const enterFullscreen = () => {
+                        try {
+                            if (document.documentElement.requestFullscreen) {
+                                document.documentElement.requestFullscreen();
+                            } else if (document.documentElement.webkitRequestFullscreen) {
+                                document.documentElement.webkitRequestFullscreen();
+                            }
+                        } catch (e) {
+                            console.log("Tela cheia requer interação do usuário.");
+                        }
+                    };
+
+                    enterFullscreen();
+                    window.addEventListener('click', enterFullscreen, { once: true });
+                    
+                    return () => {
+                        window.removeEventListener('click', enterFullscreen);
+                    };
+                }
+            }, [isTelaoMode]);
 
             const [user, setUser] = useState(() => {
                 const saved = localStorage.getItem('toca_karaoke_user');
@@ -418,7 +450,6 @@
             const [starMessages, setStarMessages] = useState([]);
 
             const [isPaused, setIsPaused] = useState(false);
-            const [isTelaoMode, setIsTelaoMode] = useState(false);
             const [activePlayingSong, setActivePlayingSong] = useState(null);
             
             const [backgroundLinkInput, setBackgroundLinkInput] = useState('');
@@ -464,13 +495,6 @@
 
             const backgroundSongActiveRef = useRef(backgroundSongActive);
             useEffect(() => { backgroundSongActiveRef.current = backgroundSongActive; }, [backgroundSongActive]);
-
-            useEffect(() => {
-                const params = new URLSearchParams(window.location.search);
-                if (params.get('telao') === 'true') {
-                    setIsTelaoMode(true);
-                }
-            }, []);
 
             const triggerStarCelebration = () => {
                 const newMsgId = Date.now() + Math.random();
