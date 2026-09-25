@@ -2,11 +2,11 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Karaokê - Toca do Guerreiro</title>
     <!-- Configuração para PWA (Instalar no Celular) -->
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#f59e0b">
+    <meta name="theme-color" content="#09090b">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Karaokê Toca">
@@ -32,7 +32,6 @@
         .floating-star-message {
             animation: popUpMessage 3s ease-out forwards;
         }
-        /* Garante que o player do YouTube ocupe perfeitamente a tela inteira sem falhas */
         #youtube-player-container {
             width: 100vw;
             height: 100vh;
@@ -50,7 +49,7 @@
         }
     </style>
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+<body class="bg-zinc-950 text-zinc-100 min-h-screen overflow-hidden">
     <div id="root"></div>
 
     <script>
@@ -347,7 +346,7 @@
         }
 
         function App() {
-            // WAKE LOCK API: Mantém a tela do tablet acesa enquanto o app estiver aberto
+            // WAKE LOCK API: Mantém a tela ligada
             useEffect(() => {
                 let wakeLock = null;
 
@@ -380,8 +379,9 @@
             }, []);
 
             const [isTelaoMode, setIsTelaoMode] = useState(false);
+            const [isFullscreen, setIsFullscreen] = useState(false);
 
-            // FULLSCREEN AUTOMÁTICO NO MODO TELÃO
+            // Verifica modo telão
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
                 if (params.get('telao') === 'true') {
@@ -389,28 +389,40 @@
                 }
             }, []);
 
-            useEffect(() => {
-                if (isTelaoMode) {
-                    const enterFullscreen = () => {
-                        try {
-                            if (document.documentElement.requestFullscreen) {
-                                document.documentElement.requestFullscreen();
-                            } else if (document.documentElement.webkitRequestFullscreen) {
-                                document.documentElement.webkitRequestFullscreen();
-                            }
-                        } catch (e) {
-                            console.log("Tela cheia requer interação do usuário.");
-                        }
-                    };
-
-                    enterFullscreen();
-                    window.addEventListener('click', enterFullscreen, { once: true });
-                    
-                    return () => {
-                        window.removeEventListener('click', enterFullscreen);
-                    };
+            // Função robusta de Fullscreen
+            const handleToggleFullScreen = () => {
+                const doc = document.documentElement;
+                if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
+                    if (doc.requestFullscreen) {
+                        doc.requestFullscreen().catch(err => console.log("Erro fullscreen:", err));
+                    } else if (doc.webkitRequestFullscreen) {
+                        doc.webkitRequestFullscreen();
+                    } else if (doc.msRequestFullscreen) {
+                        doc.msRequestFullscreen();
+                    }
+                    setIsFullscreen(true);
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    } else if (document.webkitExitFullscreen) {
+                        document.webkitExitFullscreen();
+                    }
+                    setIsFullscreen(false);
                 }
-            }, [isTelaoMode]);
+            };
+
+            // Atualiza o estado do botão caso saiam do fullscreen via gestos do tablet
+            useEffect(() => {
+                const handleFullscreenChange = () => {
+                    setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
+                };
+                document.addEventListener('fullscreenchange', handleFullscreenChange);
+                document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+                return () => {
+                    document.removeEventListener('fullscreenchange', handleFullscreenChange);
+                    document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+                };
+            }, []);
 
             const [user, setUser] = useState(() => {
                 const saved = localStorage.getItem('toca_karaoke_user');
@@ -1213,6 +1225,17 @@
                         React.createElement('span', { className: 'bg-amber-500 text-zinc-950 font-black px-4 py-1.5 rounded-xl text-sm uppercase' }, '🖥️ Telão Toca do Guerreiro'),
                         currentPlaying && !isTelaoMutedState && React.createElement('span', { className: 'bg-zinc-900 border border-zinc-800 text-zinc-300 px-4 py-1.5 rounded-xl text-sm font-bold' }, currentPlaying.isBackground ? '🎵 Som Ambiente' : `Cantando: ${currentPlaying.user} — ${currentPlaying.title}`)
                     ),
+                    
+                    // BOTÃO NOVO DE ECRÃ INTEIRO
+                    React.createElement(
+                        'div',
+                        { className: 'absolute top-4 right-4 z-50 flex gap-2' },
+                        React.createElement('button', {
+                            onClick: handleToggleFullScreen,
+                            className: 'bg-zinc-900/80 backdrop-blur border border-zinc-700 text-zinc-300 px-4 py-2 rounded-xl text-xs font-bold hover:bg-zinc-800 transition-all shadow-lg'
+                        }, isFullscreen ? 'Sair da Tela Cheia' : '🔲 Tela Cheia')
+                    ),
+
                     React.createElement(
                         'div',
                         { className: 'w-screen h-screen bg-black relative' },
