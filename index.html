@@ -49,7 +49,7 @@
         }
     </style>
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen overflow-hidden">
+<body class="bg-zinc-950 text-zinc-100 min-h-screen">
     <div id="root"></div>
 
     <script>
@@ -1226,7 +1226,7 @@
                         currentPlaying && !isTelaoMutedState && React.createElement('span', { className: 'bg-zinc-900 border border-zinc-800 text-zinc-300 px-4 py-1.5 rounded-xl text-sm font-bold' }, currentPlaying.isBackground ? '🎵 Som Ambiente' : `Cantando: ${currentPlaying.user} — ${currentPlaying.title}`)
                     ),
                     
-                    // BOTÃO NOVO DE ECRÃ INTEIRO
+                    // BOTÃO DE TELA CHEIA
                     React.createElement(
                         'div',
                         { className: 'absolute top-4 right-4 z-50 flex gap-2' },
