@@ -71,7 +71,7 @@
         }
         const db = firebase.firestore();
 
-        // Links atualizados para os GIFs
+        // Links dos GIFs super leves
         const GUERREIRO_VIDEOS = {
             '🙉': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro1.gif',
             '❤️': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro3.gif',
@@ -170,7 +170,6 @@
             return "";
         }
 
-        // Função do Guerreirinho otimizada para GIF
         function FloatingGuerreiro({ emoji, onFinish }) {
             const edgePositions = [
                 { bottom: '1rem', left: '2rem' },
@@ -297,7 +296,6 @@
         }
 
         function App() {
-            // WAKE LOCK API: Mantém a tela ligada
             useEffect(() => {
                 let wakeLock = null;
 
@@ -1179,7 +1177,8 @@
                         { className: 'absolute top-4 right-4 z-50 flex gap-2' },
                         React.createElement('button', {
                             onClick: handleToggleFullScreen,
-                            className: 'bg-zinc-900/80 backdrop-blur border border-zinc-700 text-zinc-300 px-4 py-2 rounded-xl text-xs font-bold hover:bg-zinc-800 transition-all shadow-lg'
+                            // Removido o backdrop-blur daqui
+                            className: 'bg-zinc-900 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-xl text-xs font-bold hover:bg-zinc-800 transition-all shadow-lg'
                         }, isFullscreen ? 'Sair da Tela Cheia' : '🔲 Tela Cheia')
                     ),
 
@@ -1195,7 +1194,8 @@
                         ),
                         isTelaoMutedState && React.createElement(
                             'div',
-                            { className: 'absolute inset-0 bg-zinc-950/95 backdrop-blur-md flex flex-col items-center justify-center z-30 p-6 text-center' },
+                            // Removido o backdrop-blur daqui e deixado um fundo mais sólido
+                            { className: 'absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center z-30 p-6 text-center' },
                             React.createElement('h2', { className: 'text-3xl font-extrabold text-amber-500 mb-2' }, '⏸️ Música Pausada pelo Administrador'),
                             React.createElement('p', { className: 'text-zinc-400' }, 'O telão está pausado. Ao retomar, continuará exatamente de onde parou!')
                         )
@@ -1328,8 +1328,9 @@
                     )
                 ),
                 React.createElement(
+                    // Removido o backdrop-blur do header
                     'header',
-                    { className: 'flex justify-between items-center bg-zinc-900/80 backdrop-blur border border-zinc-800 p-4 rounded-2xl mb-8' },
+                    { className: 'flex justify-between items-center bg-zinc-900 border border-zinc-800 p-4 rounded-2xl mb-8' },
                     React.createElement(
                         'div',
                         { className: 'flex items-center gap-4' },
@@ -1552,8 +1553,9 @@
                     )
                 ),
                 showPausedModal && React.createElement(
+                    // Removido blur, deixado fundo ultra opaco para destacar
                     'div',
-                    { className: 'fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50' },
+                    { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50' },
                     React.createElement(
                         'div',
                         { className: 'bg-zinc-900 border border-amber-500/50 rounded-2xl p-6 w-full max-w-xs shadow-2xl text-center' },
@@ -1569,8 +1571,9 @@
                     )
                 ),
                 mutedAlertMessage && React.createElement(
+                    // Removido blur
                     'div',
-                    { className: 'fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50' },
+                    { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50' },
                     React.createElement(
                         'div',
                         { className: 'bg-zinc-900 border border-red-500/50 rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center' },
@@ -1581,8 +1584,9 @@
                     )
                 ),
                 showUsersModal && React.createElement(
+                    // Removido blur
                     'div',
-                    { className: 'fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50' },
+                    { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50' },
                     React.createElement(
                         'div',
                         { className: 'bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[80vh] flex flex-col' },
@@ -1615,8 +1619,9 @@
                     )
                 ),
                 adminModal && React.createElement(
+                    // Removido blur
                     'div',
-                    { className: 'fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50' },
+                    { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50' },
                     React.createElement(
                         'div',
                         { className: 'bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl' },
@@ -1640,8 +1645,9 @@
                     )
                 ),
                 editingSong && React.createElement(
+                    // Removido blur
                     'div',
-                    { className: 'fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-55' },
+                    { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-55' },
                     React.createElement(
                         'div',
                         { className: 'bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl' },
