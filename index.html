@@ -71,10 +71,11 @@
         }
         const db = firebase.firestore();
 
+        // Links atualizados para os GIFs
         const GUERREIRO_VIDEOS = {
-            '🙉': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro1.mp4',
-            '❤️': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro3.mp4',
-            '👏': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro2.mp4'
+            '🙉': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro1.gif',
+            '❤️': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro3.gif',
+            '👏': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro2.gif'
         };
 
         function playBeep(isHigh = false) {
@@ -169,11 +170,8 @@
             return "";
         }
 
+        // Função do Guerreirinho otimizada para GIF
         function FloatingGuerreiro({ emoji, onFinish }) {
-            const canvasRef = useRef(null);
-            const videoRef = useRef(null);
-            const animRef = useRef(null);
-
             const edgePositions = [
                 { bottom: '1rem', left: '2rem' },
                 { bottom: '1rem', right: '2rem' },
@@ -185,54 +183,14 @@
             const randomPos = useRef(edgePositions[Math.floor(Math.random() * edgePositions.length)]).current;
 
             useEffect(() => {
-                const video = videoRef.current;
-                const canvas = canvasRef.current;
-                if (!video || !canvas) return;
+                const timer = setTimeout(() => {
+                    onFinish();
+                }, 4000);
 
-                const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                video.src = GUERREIRO_VIDEOS[emoji];
-                video.currentTime = 0;
-                video.play().catch(e => console.error("Erro ao reproduzir guerreirinho flutuante:", e));
+                return () => clearTimeout(timer);
+            }, [onFinish]);
 
-                const processFrame = () => {
-                    if (video.paused || video.ended) {
-                        onFinish();
-                        return;
-                    }
-
-                    canvas.width = video.videoWidth || 320;
-                    canvas.height = video.videoHeight || 180;
-
-                    try {
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                        let data = frame.data;
-
-                        for (let i = 0; i < data.length; i += 4) {
-                            let red = data[i];
-                            let green = data[i + 1];
-                            let blue = data[i + 2];
-
-                            if (green > 90 && red < 90 && blue < 90) {
-                                data[i + 3] = 0;
-                            }
-                        }
-
-                        ctx.putImageData(frame, 0, 0);
-                    } catch (err) {
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    }
-                    animRef.current = requestAnimationFrame(processFrame);
-                };
-
-                video.onplay = () => { processFrame(); };
-                video.onended = () => { onFinish(); };
-
-                return () => {
-                    if (animRef.current) cancelAnimationFrame(animRef.current);
-                };
-            }, [emoji, onFinish]);
+            const gifUrl = `${GUERREIRO_VIDEOS[emoji]}?t=${Date.now()}`;
 
             return React.createElement(
                 'div',
@@ -240,15 +198,8 @@
                     className: 'absolute pointer-events-none z-40 flex items-center justify-center',
                     style: randomPos
                 },
-                React.createElement('video', {
-                    ref: videoRef,
-                    style: { display: 'none' },
-                    muted: true,
-                    playsInline: true,
-                    crossOrigin: 'anonymous'
-                }),
-                React.createElement('canvas', {
-                    ref: canvasRef,
+                React.createElement('img', {
+                    src: gifUrl,
                     className: 'max-h-28 sm:max-h-40 w-auto drop-shadow-2xl'
                 })
             );
@@ -381,7 +332,6 @@
             const [isTelaoMode, setIsTelaoMode] = useState(false);
             const [isFullscreen, setIsFullscreen] = useState(false);
 
-            // Verifica modo telão
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
                 if (params.get('telao') === 'true') {
@@ -389,7 +339,6 @@
                 }
             }, []);
 
-            // Função robusta de Fullscreen
             const handleToggleFullScreen = () => {
                 const doc = document.documentElement;
                 if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
@@ -411,7 +360,6 @@
                 }
             };
 
-            // Atualiza o estado do botão caso saiam do fullscreen via gestos do tablet
             useEffect(() => {
                 const handleFullscreenChange = () => {
                     setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
@@ -1226,7 +1174,6 @@
                         currentPlaying && !isTelaoMutedState && React.createElement('span', { className: 'bg-zinc-900 border border-zinc-800 text-zinc-300 px-4 py-1.5 rounded-xl text-sm font-bold' }, currentPlaying.isBackground ? '🎵 Som Ambiente' : `Cantando: ${currentPlaying.user} — ${currentPlaying.title}`)
                     ),
                     
-                    // BOTÃO DE TELA CHEIA
                     React.createElement(
                         'div',
                         { className: 'absolute top-4 right-4 z-50 flex gap-2' },
