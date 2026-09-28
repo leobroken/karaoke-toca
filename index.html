@@ -169,7 +169,7 @@
             return "";
         }
 
-        // Componente blindado com tempo estendido (6.5s) para o GIF rodar inteiro
+        // Ajustado para exatos 5 segundos (5000ms)
         function FloatingGuerreiro({ emoji, onFinish }) {
             const [hasError, setHasError] = useState(false);
 
@@ -186,7 +186,7 @@
             useEffect(() => {
                 const timer = setTimeout(() => {
                     onFinish();
-                }, 6500);
+                }, 5000);
 
                 return () => clearTimeout(timer);
             }, [onFinish]);
