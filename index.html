@@ -4,16 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Karaokê - Toca do Guerreiro</title>
+    <!-- Configuração para PWA (Instalar no Celular) -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#09090b">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Karaokê Toca">
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <!-- YouTube Iframe API -->
     <script src="https://www.youtube.com/iframe_api"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
@@ -66,7 +71,6 @@
         }
         const db = firebase.firestore();
 
-        // Links diretos para os GIFs no GitHub
         const GUERREIRO_VIDEOS = {
             '🙉': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro1.gif',
             '❤️': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro3.gif',
@@ -165,8 +169,10 @@
             return "";
         }
 
-        // Componente atualizado para garantir que o GIF reinicie do zero e passe inteiro
+        // Componente blindado: se o GIF falhar no carregamento, exibe um card animado espetacular com o emoji
         function FloatingGuerreiro({ emoji, onFinish }) {
+            const [hasError, setHasError] = useState(false);
+
             const edgePositions = [
                 { bottom: '1rem', left: '2rem' },
                 { bottom: '1rem', right: '2rem' },
@@ -180,12 +186,28 @@
             useEffect(() => {
                 const timer = setTimeout(() => {
                     onFinish();
-                }, 4000); // 4 segundos de duração na tela
+                }, 4000);
 
                 return () => clearTimeout(timer);
             }, [onFinish]);
 
-            const gifSrc = GUERREIRO_VIDEOS[emoji] || GUERREIRO_VIDEOS['👏'];
+            const gifSrc = GUERREIRO_VIDEOS[emoji];
+
+            if (hasError) {
+                return React.createElement(
+                    'div',
+                    {
+                        className: 'absolute pointer-events-none z-40 flex items-center justify-center animate-bounce',
+                        style: randomPos
+                    },
+                    React.createElement(
+                        'div',
+                        { className: 'bg-amber-500 border-4 border-yellow-200 text-zinc-950 px-6 py-3 rounded-3xl shadow-2xl flex items-center gap-3 text-3xl font-black' },
+                        React.createElement('span', { className: 'text-5xl' }, emoji),
+                        React.createElement('span', { className: 'text-lg uppercase tracking-wider' }, 'Toca do Guerreiro!')
+                    )
+                );
+            }
 
             return React.createElement(
                 'div',
@@ -195,6 +217,7 @@
                 },
                 React.createElement('img', {
                     src: gifSrc,
+                    onError: () => setHasError(true),
                     className: 'max-h-28 sm:max-h-40 w-auto drop-shadow-2xl'
                 })
             );
