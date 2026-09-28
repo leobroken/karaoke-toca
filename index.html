@@ -169,7 +169,7 @@
             return "";
         }
 
-        // Componente blindado: se o GIF falhar no carregamento, exibe um card animado espetacular com o emoji
+        // Componente blindado com tempo estendido (6.5s) para o GIF rodar inteiro
         function FloatingGuerreiro({ emoji, onFinish }) {
             const [hasError, setHasError] = useState(false);
 
@@ -186,7 +186,7 @@
             useEffect(() => {
                 const timer = setTimeout(() => {
                     onFinish();
-                }, 4000);
+                }, 6500);
 
                 return () => clearTimeout(timer);
             }, [onFinish]);
