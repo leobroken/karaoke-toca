@@ -169,7 +169,6 @@
             return "";
         }
 
-        // Ajustado para exatos 5 segundos (5000ms)
         function FloatingGuerreiro({ emoji, onFinish }) {
             const [hasError, setHasError] = useState(false);
 
@@ -426,6 +425,18 @@
             const [activeGuerreiros, setActiveGuerreiros] = useState([]);
             const [starMessages, setStarMessages] = useState([]);
 
+            // Cooldown global sincronizado via tempo restante
+            const [globalCooldownSeconds, setGlobalCooldownSeconds] = useState(0);
+
+            useEffect(() => {
+                if (globalCooldownSeconds > 0) {
+                    const timer = setTimeout(() => {
+                        setGlobalCooldownSeconds(prev => prev - 1);
+                    }, 1000);
+                    return () => clearTimeout(timer);
+                }
+            }, [globalCooldownSeconds]);
+
             const [isPaused, setIsPaused] = useState(false);
             const [activePlayingSong, setActivePlayingSong] = useState(null);
             
@@ -548,18 +559,28 @@
                     setHistory(items);
                 });
 
+                // Escuta globalmente as reações de QUALQUER cliente para acionar o cooldown global em todos os celulares
                 const unsubCelebration = db.collection('settings').doc('celebration').onSnapshot(doc => {
-                    if (doc.exists && isTelaoMode) {
+                    if (doc.exists) {
                         const data = doc.data();
-                        if (data && data.timestamp && (Date.now() - data.timestamp < 5000)) {
-                            if (data.emoji && GUERREIRO_VIDEOS[data.emoji]) {
-                                setActiveGuerreiros(prev => {
-                                    const newId = Date.now() + Math.random();
-                                    return [...prev, { id: newId, emoji: data.emoji }];
-                                });
+                        if (data && data.timestamp) {
+                            const elapsed = Date.now() - data.timestamp;
+                            if (elapsed < 5000) {
+                                // Calcula quantos segundos restam para o cooldown global fechar (arredondado para cima)
+                                const remaining = Math.ceil((5000 - elapsed) / 1000);
+                                setGlobalCooldownSeconds(remaining);
                             }
-                            if (data.type === 'stars') {
-                                triggerStarCelebration();
+
+                            if (isTelaoMode && elapsed < 5000) {
+                                if (data.emoji && GUERREIRO_VIDEOS[data.emoji]) {
+                                    setActiveGuerreiros(prev => {
+                                        const newId = Date.now() + Math.random();
+                                        return [...prev, { id: newId, emoji: data.emoji }];
+                                    });
+                                }
+                                if (data.type === 'stars') {
+                                    triggerStarCelebration();
+                                }
                             }
                         }
                     }
@@ -1091,6 +1112,8 @@
             const openTelaoWindow = () => window.open(window.location.pathname + '?telao=true', '_blank');
 
             const handleSendReaction = async (emojiSymbol) => {
+                if (globalCooldownSeconds > 0) return; // Bloqueio global ativo
+
                 const currentActive = activePlayingSongRef.current;
                 if (!currentActive || !currentActive.id || !user || currentActive.isBackground) return;
 
@@ -1138,6 +1161,7 @@
                         });
                     }
 
+                    // Atualiza o timestamp global no Firebase. Isso vai travar os botões em TODOS os celulares conectados simultaneamente!
                     await db.collection('settings').doc('celebration').set({ emoji: emojiSymbol, type: shouldTriggerStars ? 'stars' : 'reaction', timestamp: Date.now() });
                 } catch (err) {
                     console.error("Erro ao registrar reação:", err);
@@ -1305,16 +1329,21 @@
                     React.createElement(
                         'div',
                         { className: 'pt-2 border-t border-red-500/20 flex flex-col items-center' },
-                        React.createElement('span', { className: 'text-xs font-bold text-amber-400 uppercase mb-2' }, isUserTheSinger ? '⚠️ Você é o cantor desta música' : '⭐ Avalie a performance com reações:'),
+                        React.createElement('span', { className: 'text-xs font-bold text-amber-400 uppercase mb-2 text-center' }, 
+                            isUserTheSinger ? '⚠️ Você é o cantor desta música' : 
+                            globalCooldownSeconds > 0 ? `⏳ Aguarde ${globalCooldownSeconds}s (guerreiro na tela)...` : 
+                            '⭐ Avalie a performance com reações:'
+                        ),
                         React.createElement(
                             'div',
                             { className: 'flex items-center justify-center gap-4 sm:gap-6' },
                             ['🙉', '❤️', '👏'].map(emoji => {
                                 const alreadyUsedThisEmoji = userUsedEmojis.includes(emoji);
+                                const isDisabled = isUserTheSinger || alreadyUsedThisEmoji || globalCooldownSeconds > 0;
                                 return React.createElement('button', {
                                     key: emoji, onClick: () => handleSendReaction(emoji),
-                                    disabled: isUserTheSinger || alreadyUsedThisEmoji,
-                                    className: `relative text-4xl sm:text-5xl p-4 rounded-2xl bg-zinc-950/85 border transition-all ${isUserTheSinger ? 'opacity-40 border-zinc-800 cursor-not-allowed' : alreadyUsedThisEmoji ? 'opacity-40 border-amber-500/50 cursor-not-allowed grayscale' : 'border-zinc-800 hover:border-amber-500 hover:scale-110 shadow-lg'}`
+                                    disabled: isDisabled,
+                                    className: `relative text-4xl sm:text-5xl p-4 rounded-2xl bg-zinc-950/85 border transition-all ${isDisabled ? 'opacity-40 border-zinc-800 cursor-not-allowed grayscale' : 'border-zinc-800 hover:border-amber-500 hover:scale-110 shadow-lg'}`
                                 }, emoji, alreadyUsedThisEmoji && React.createElement('span', { className: 'absolute -top-1 -right-1 bg-amber-500 text-zinc-950 font-black text-[10px] w-5 h-5 rounded-full flex items-center justify-center' }, '✓'));
                             })
                         )
@@ -1677,6 +1706,7 @@
                             React.createElement(
                                 'div',
                                 null,
+                                React.createElement('label', { className: 'block text-xs font-medium text-zinc-400 mb-1' }, 'Artista / Banda'),
                                 React.createElement('label', { className: 'block text-xs font-medium text-zinc-400 mb-1' }, 'Artista / Banda'),
                                 React.createElement('input', {
                                     type: 'text', required: true, value: editingSong.artist,
