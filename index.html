@@ -4,21 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Karaokê - Toca do Guerreiro</title>
-    <!-- Configuração para PWA (Instalar no Celular) -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#09090b">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Karaokê Toca">
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <!-- YouTube Iframe API -->
     <script src="https://www.youtube.com/iframe_api"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
@@ -71,7 +66,7 @@
         }
         const db = firebase.firestore();
 
-        // Links dos GIFs super leves
+        // Links diretos para os GIFs no GitHub
         const GUERREIRO_VIDEOS = {
             '🙉': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro1.gif',
             '❤️': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro3.gif',
@@ -170,6 +165,7 @@
             return "";
         }
 
+        // Componente atualizado para garantir que o GIF reinicie do zero e passe inteiro
         function FloatingGuerreiro({ emoji, onFinish }) {
             const edgePositions = [
                 { bottom: '1rem', left: '2rem' },
@@ -184,12 +180,12 @@
             useEffect(() => {
                 const timer = setTimeout(() => {
                     onFinish();
-                }, 4000);
+                }, 4000); // 4 segundos de duração na tela
 
                 return () => clearTimeout(timer);
             }, [onFinish]);
 
-            const gifUrl = `${GUERREIRO_VIDEOS[emoji]}?t=${Date.now()}`;
+            const gifSrc = GUERREIRO_VIDEOS[emoji] || GUERREIRO_VIDEOS['👏'];
 
             return React.createElement(
                 'div',
@@ -198,7 +194,7 @@
                     style: randomPos
                 },
                 React.createElement('img', {
-                    src: gifUrl,
+                    src: gifSrc,
                     className: 'max-h-28 sm:max-h-40 w-auto drop-shadow-2xl'
                 })
             );
@@ -535,8 +531,6 @@
                         if (data && data.timestamp && (Date.now() - data.timestamp < 5000)) {
                             if (data.emoji && GUERREIRO_VIDEOS[data.emoji]) {
                                 setActiveGuerreiros(prev => {
-                                    const alreadyPlaying = prev.some(g => g.emoji === data.emoji);
-                                    if (alreadyPlaying) return prev;
                                     const newId = Date.now() + Math.random();
                                     return [...prev, { id: newId, emoji: data.emoji }];
                                 });
@@ -1177,7 +1171,6 @@
                         { className: 'absolute top-4 right-4 z-50 flex gap-2' },
                         React.createElement('button', {
                             onClick: handleToggleFullScreen,
-                            // Removido o backdrop-blur daqui
                             className: 'bg-zinc-900 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-xl text-xs font-bold hover:bg-zinc-800 transition-all shadow-lg'
                         }, isFullscreen ? 'Sair da Tela Cheia' : '🔲 Tela Cheia')
                     ),
@@ -1194,7 +1187,6 @@
                         ),
                         isTelaoMutedState && React.createElement(
                             'div',
-                            // Removido o backdrop-blur daqui e deixado um fundo mais sólido
                             { className: 'absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center z-30 p-6 text-center' },
                             React.createElement('h2', { className: 'text-3xl font-extrabold text-amber-500 mb-2' }, '⏸️ Música Pausada pelo Administrador'),
                             React.createElement('p', { className: 'text-zinc-400' }, 'O telão está pausado. Ao retomar, continuará exatamente de onde parou!')
@@ -1328,7 +1320,6 @@
                     )
                 ),
                 React.createElement(
-                    // Removido o backdrop-blur do header
                     'header',
                     { className: 'flex justify-between items-center bg-zinc-900 border border-zinc-800 p-4 rounded-2xl mb-8' },
                     React.createElement(
@@ -1553,7 +1544,6 @@
                     )
                 ),
                 showPausedModal && React.createElement(
-                    // Removido blur, deixado fundo ultra opaco para destacar
                     'div',
                     { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50' },
                     React.createElement(
@@ -1571,7 +1561,6 @@
                     )
                 ),
                 mutedAlertMessage && React.createElement(
-                    // Removido blur
                     'div',
                     { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50' },
                     React.createElement(
@@ -1584,7 +1573,6 @@
                     )
                 ),
                 showUsersModal && React.createElement(
-                    // Removido blur
                     'div',
                     { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50' },
                     React.createElement(
@@ -1619,7 +1607,6 @@
                     )
                 ),
                 adminModal && React.createElement(
-                    // Removido blur
                     'div',
                     { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50' },
                     React.createElement(
@@ -1645,7 +1632,6 @@
                     )
                 ),
                 editingSong && React.createElement(
-                    // Removido blur
                     'div',
                     { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-55' },
                     React.createElement(
