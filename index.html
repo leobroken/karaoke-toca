@@ -153,7 +153,7 @@
                 
                 if (data.items && data.items.length > 0) {
                     let candidates = data.items.filter(item => item.id && item.id.videoId && item.id.videoId !== excludeVideoId);
-                    if (candidates.length === 0) candidates = data.items; // Fallback caso só exista 1
+                    if (candidates.length === 0) candidates = data.items;
 
                     let selectedItem = candidates[0];
                     for (let item of candidates) {
@@ -263,11 +263,1582 @@
                         y: e.clientY - dragOffset.current.y
                     });
                 };
-                const onMouseUp = () => { isDragging.current = false;Sim, é totalmente possível e fica perfeito para resolver esse problema de cair uma versão ruim (por exemplo, quando o áudio está ruim, é um clipe em vez de karaokê, ou a letra está errada)!
+                const onMouseUp = () => { isDragging.current = false; };
 
-Podemos colocar um botão **"🔄 Outra Versão"** direto na linha da música que está tocando no momento (ou no painel do administrador). Quando você clica nele, o sistema faz o seguinte:
-1. Faz uma nova consulta rápida na API do YouTube usando o mesmo título e artista.
-2. Pula para o **próximo resultado** da busca (ou filtra para garantir um link diferente do atual).
-3. Atualiza automaticamente o link na hora e recarrega o player no telão com a nova versão, sem precisar redigitar nada!
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+                window.addEventListener('touchmove', handleTouchMove);
+                window.addEventListener('touchend', handleTouchEnd);
 
-Quer que eu adicione essa função de **"🔄 Outra Versão"** agora no seu código?
+                return () => {
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                    window.removeEventListener('touchmove', handleTouchMove);
+                    window.removeEventListener('touchend', handleTouchEnd);
+                };
+            }, []);
+
+            const telaoMirrorUrl = window.location.pathname + '?telao=true';
+
+            return React.createElement(
+                'div',
+                {
+                    ref: containerRef,
+                    style: { left: `${position.x}px`, top: `${position.y}px` },
+                    className: 'fixed z-50 w-80 bg-zinc-900 border-2 border-amber-500 rounded-2xl shadow-2xl overflow-hidden select-none'
+                },
+                React.createElement(
+                    'div',
+                    {
+                        onMouseDown: handleTouchStart,
+                        onTouchStart: handleTouchStart,
+                        className: 'bg-amber-500 text-zinc-950 px-3.5 py-2 flex items-center justify-between cursor-move font-extrabold text-xs'
+                    },
+                    React.createElement('span', null, '🖥️ Espelho do Telão (Arraste aqui)'),
+                    React.createElement('button', {
+                        onClick: onClose,
+                        className: 'bg-zinc-950 text-amber-400 hover:bg-zinc-900 w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shadow'
+                    }, '✕')
+                ),
+                React.createElement(
+                    'div',
+                    { className: 'w-full aspect-video bg-black relative' },
+                    React.createElement('iframe', {
+                        src: telaoMirrorUrl,
+                        className: 'w-full h-full border-0 pointer-events-none'
+                    })
+                ),
+                React.createElement(
+                    'div',
+                    { className: 'px-3 py-1.5 bg-zinc-950 text-[10px] text-zinc-400 text-center font-medium' },
+                    'Transmissão ao vivo idêntica ao telão oficial'
+                )
+            );
+        }
+
+        function App() {
+            useEffect(() => {
+                let wakeLock = null;
+
+                const requestWakeLock = async () => {
+                    try {
+                        if ('wakeLock' in navigator) {
+                            wakeLock = await navigator.wakeLock.request('screen');
+                        }
+                    } catch (err) {
+                        console.error(`Erro ao ativar o Wake Lock: ${err.name}, ${err.message}`);
+                    }
+                };
+
+                requestWakeLock();
+
+                const handleVisibilityChange = () => {
+                    if (wakeLock !== null && document.visibilityState === 'visible') {
+                        requestWakeLock();
+                    }
+                };
+
+                document.addEventListener('visibilitychange', handleVisibilityChange);
+
+                return () => {
+                    if (wakeLock !== null) {
+                        wakeLock.release().catch(() => {});
+                    }
+                    document.removeEventListener('visibilitychange', handleVisibilityChange);
+                };
+            }, []);
+
+            const [isTelaoMode, setIsTelaoMode] = useState(false);
+            const [isFullscreenActive, setIsFullscreenActive] = useState(false);
+
+            useEffect(() => {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('telao') === 'true') {
+                    setIsTelaoMode(true);
+                }
+
+                const handleFullscreenChange = () => {
+                    setIsFullscreenActive(!!document.fullscreenElement);
+                };
+                document.addEventListener('fullscreenchange', handleFullscreenChange);
+                return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+            }, []);
+
+            useEffect(() => {
+                const unsubReload = db.collection('settings').doc('reloadCommand').onSnapshot(doc => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        if (data && data.timestamp) {
+                            const elapsed = Date.now() - data.timestamp;
+                            if (elapsed < 6000) {
+                                try {
+                                    localStorage.clear();
+                                    sessionStorage.clear();
+                                } catch(e) {}
+                                const currentSearch = window.location.search;
+                                const hasTelao = currentSearch.includes('telao=true');
+                                window.location.href = window.location.pathname + (hasTelao ? '?telao=true&reload=' : '?reload=') + Date.now();
+                            }
+                        }
+                    }
+                });
+                return () => unsubReload();
+            }, []);
+
+            const [user, setUser] = useState(() => {
+                const saved = localStorage.getItem('toca_karaoke_user');
+                if (saved) {
+                    try {
+                        const data = JSON.parse(saved);
+                        if (new Date().getTime() - data.timestamp < 24 * 60 * 60 * 1000) return data;
+                    } catch(e) {}
+                }
+                return null;
+            });
+
+            const [lockedDeviceUser, setLockedDeviceUser] = useState(() => {
+                const locked = localStorage.getItem('toca_karaoke_locked_device');
+                if (locked) {
+                    try {
+                        const data = JSON.parse(locked);
+                        if (new Date().getTime() - data.timestamp < 24 * 60 * 60 * 1000) return data;
+                    } catch(e) {}
+                }
+                return null;
+            });
+
+            const [inputName, setInputName] = useState(lockedDeviceUser ? lockedDeviceUser.name : '');
+            const [inputPhone, setInputPhone] = useState(lockedDeviceUser ? lockedDeviceUser.phone : '');
+            
+            const [songTitle, setSongTitle] = useState('');
+            const [songArtist, setSongArtist] = useState('');
+            const [isSearchingAuto, setIsSearchingAuto] = useState(false);
+            const [isSwitchingVersion, setIsSwitchingVersion] = useState(false);
+            
+            const [queue, setQueue] = useState([]);
+            const queueRef = useRef(queue);
+            useEffect(() => { queueRef.current = queue; }, [queue]);
+
+            const [history, setHistory] = useState([]);
+            const [activeGuerreiros, setActiveGuerreiros] = useState([]);
+            const [starMessages, setStarMessages] = useState([]);
+
+            const [globalCooldownSeconds, setGlobalCooldownSeconds] = useState(0);
+
+            useEffect(() => {
+                if (globalCooldownSeconds > 0) {
+                    const timer = setTimeout(() => {
+                        setGlobalCooldownSeconds(prev => prev - 1);
+                    }, 1000);
+                    return () => clearTimeout(timer);
+                }
+            }, [globalCooldownSeconds]);
+
+            const [isPaused, setIsPaused] = useState(false);
+            const [activePlayingSong, setActivePlayingSong] = useState(null);
+            
+            const [backgroundLinkInput, setBackgroundLinkInput] = useState('');
+            const [backgroundSongActive, setBackgroundSongActive] = useState(null);
+            const [isTelaoMutedState, setIsTelaoMutedState] = useState(false);
+            const [telaoVolume, setTelaoVolume] = useState(100);
+
+            const [showAdminMirror, setShowAdminMirror] = useState(false);
+
+            const [introCountdown, setIntroCountdown] = useState(null);
+            const introTimerRef = useRef(null);
+
+            const [showPausedModal, setShowPausedModal] = useState(false);
+            const [isVideoMuted, setIsVideoMuted] = useState(true);
+            const videoRef = useRef(null);
+
+            const [isAdmin, setIsAdmin] = useState(() => {
+                const adminSaved = localStorage.getItem('toca_karaoke_admin');
+                if (adminSaved) {
+                    const adminData = JSON.parse(adminSaved);
+                    if (new Date().getTime() - adminData.timestamp < 24 * 60 * 60 * 1000) return true;
+                }
+                return false;
+            });
+
+            const [adminModal, setAdminModal] = useState(false);
+            const [adminPassword, setAdminPassword] = useState('');
+            const [editingSong, setEditingSong] = useState(null);
+            const [youtubeInputs, setYoutubeInputs] = useState({});
+
+            const [usersList, setUsersList] = useState([]);
+            const [mutedPhones, setMutedPhones] = useState({});
+            const [showUsersModal, setShowUsersModal] = useState(false);
+            const [mutedAlertMessage, setMutedAlertMessage] = useState(null);
+
+            const ytPlayerRef = useRef(null);
+            const currentVideoIdRef = useRef(null);
+            const lastSongIdProcessedRef = useRef(null);
+            const checkEndIntervalRef = useRef(null);
+            const isTransitioningRef = useRef(false);
+
+            const activePlayingSongRef = useRef(activePlayingSong);
+            useEffect(() => { activePlayingSongRef.current = activePlayingSong; }, [activePlayingSong]);
+
+            const backgroundSongActiveRef = useRef(backgroundSongActive);
+            useEffect(() => { backgroundSongActiveRef.current = backgroundSongActive; }, [backgroundSongActive]);
+
+            const triggerStarCelebration = () => {
+                const newMsgId = Date.now() + Math.random();
+                setStarMessages(prev => [...prev, newMsgId]);
+                playStarSound();
+                setTimeout(() => {
+                    setStarMessages(prev => prev.filter(id => id !== newMsgId));
+                }, 3000);
+            };
+
+            const handleNextSong = async () => {
+                if (isTransitioningRef.current) return;
+                isTransitioningRef.current = true;
+
+                try {
+                    const currentActive = activePlayingSongRef.current;
+                    const currentBg = backgroundSongActiveRef.current;
+                    
+                    if (currentActive && currentActive.id && !currentBg && !currentActive.isBackground) {
+                        try {
+                            await db.collection('history').add({
+                                title: currentActive.title,
+                                artist: currentActive.artist,
+                                user: currentActive.user,
+                                phone: currentActive.phone || '',
+                                reactions: { '🙉': 0, '❤️': 0, '👏': 0 },
+                                reactedUsers: {},
+                                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                            });
+                        } catch (err) {
+                            console.error("Erro ao salvar histórico:", err);
+                        }
+                    }
+
+                    const snapshot = await db.collection('queue').orderBy('createdAt', 'asc').get();
+                    const freshQueue = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    if (freshQueue.length === 0) {
+                        await db.collection('settings').doc('activePlaying').set({ song: null });
+                        isTransitioningRef.current = false;
+                        return;
+                    }
+
+                    const currentPlayingFromQueue = freshQueue[0];
+                    await db.collection('queue').doc(currentPlayingFromQueue.id).delete();
+
+                    const nextPlayingFromQueue = freshQueue.length > 1 ? freshQueue[1] : null;
+
+                    if (nextPlayingFromQueue && nextPlayingFromQueue.youtubeLink) {
+                        const videoId = getYouTubeVideoId(nextPlayingFromQueue.youtubeLink);
+                        await db.collection('settings').doc('activePlaying').set({ 
+                            song: { ...nextPlayingFromQueue, videoId: videoId, timestamp: Date.now() } 
+                        });
+                    } else {
+                        await db.collection('settings').doc('activePlaying').set({ song: null });
+                    }
+                } catch (error) {
+                    console.error("Erro ao avançar música na fila: ", error);
+                } finally {
+                    setTimeout(() => {
+                        isTransitioningRef.current = false;
+                    }, 1000);
+                }
+            };
+
+            useEffect(() => {
+                const unsubQueue = db.collection('queue').orderBy('createdAt', 'asc').onSnapshot(snapshot => {
+                    const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setQueue(items);
+                });
+
+                const unsubHistory = db.collection('history').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+                    const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setHistory(items);
+                });
+
+                const unsubCelebration = db.collection('settings').doc('celebration').onSnapshot(doc => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        if (data && data.timestamp) {
+                            const elapsed = Date.now() - data.timestamp;
+                            if (elapsed < 5000) {
+                                const remaining = Math.ceil((5000 - elapsed) / 1000);
+                                setGlobalCooldownSeconds(remaining);
+                            }
+
+                            if (isTelaoMode && elapsed < 5000) {
+                                if (data.emoji && GUERREIRO_VIDEOS[data.emoji]) {
+                                    setActiveGuerreiros(prev => {
+                                        const newId = Date.now() + Math.random();
+                                        return [...prev, { id: newId, emoji: data.emoji }];
+                                    });
+                                }
+                                if (data.type === 'stars') {
+                                    triggerStarCelebration();
+                                }
+                            }
+                        }
+                    }
+                });
+
+                const unsubSettings = db.collection('settings').doc('status').onSnapshot(doc => {
+                    if (doc.exists) setIsPaused(doc.data().paused || false);
+                });
+
+                const unsubActive = db.collection('settings').doc('activePlaying').onSnapshot(doc => {
+                    if (doc.exists) {
+                        const newSong = doc.data().song || null;
+                        setActivePlayingSong(newSong);
+                    }
+                });
+
+                const unsubBg = db.collection('settings').doc('backgroundSong').onSnapshot(doc => {
+                    if (doc.exists) setBackgroundSongActive(doc.data().song || null);
+                });
+
+                const unsubTelaoMute = db.collection('settings').doc('telaoMute').onSnapshot(doc => {
+                    if (doc.exists) {
+                        const muted = doc.data().muted || false;
+                        setIsTelaoMutedState(muted);
+                        if (ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === 'function' && typeof ytPlayerRef.current.playVideo === 'function') {
+                            if (muted) ytPlayerRef.current.pauseVideo();
+                            else ytPlayerRef.current.playVideo();
+                        }
+                    }
+                });
+
+                const unsubVolume = db.collection('settings').doc('telaoVolume').onSnapshot(doc => {
+                    if (doc.exists) {
+                        const vol = doc.data().volume !== undefined ? doc.data().volume : 100;
+                        setTelaoVolume(vol);
+                        if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
+                            ytPlayerRef.current.setVolume(vol);
+                        }
+                    }
+                });
+
+                const unsubUsers = db.collection('users').onSnapshot(snapshot => {
+                    const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setUsersList(items);
+                });
+
+                const unsubMuted = db.collection('settings').doc('mutedUsers').onSnapshot(doc => {
+                    if (doc.exists) setMutedPhones(doc.data() || {});
+                });
+
+                return () => {
+                    unsubQueue();
+                    unsubHistory();
+                    unsubCelebration();
+                    unsubSettings();
+                    unsubActive();
+                    unsubBg();
+                    unsubTelaoMute();
+                    unsubVolume();
+                    unsubUsers();
+                    unsubMuted();
+                };
+            }, [isTelaoMode]);
+
+            useEffect(() => {
+                if (!isTelaoMode || !activePlayingSong || activePlayingSong.isBackground) return;
+                
+                const songUniqueKey = `${activePlayingSong.id || activePlayingSong.videoId}-${activePlayingSong.timestamp || 0}`;
+                if (lastSongIdProcessedRef.current === songUniqueKey) return;
+                lastSongIdProcessedRef.current = songUniqueKey;
+
+                let count = 5;
+                setIntroCountdown({ song: activePlayingSong, count: count });
+                playBeep(false);
+
+                if (introTimerRef.current) clearInterval(introTimerRef.current);
+
+                introTimerRef.current = setInterval(() => {
+                    count--;
+                    if (count > 0) {
+                        playBeep(false);
+                        setIntroCountdown(prev => prev ? { ...prev, count: count } : null);
+                    } else {
+                        playBeep(true);
+                        clearInterval(introTimerRef.current);
+                        setIntroCountdown(null);
+                        if (ytPlayerRef.current && typeof ytPlayerRef.current.playVideo === 'function' && !isTelaoMutedState) {
+                            ytPlayerRef.current.unMute();
+                            ytPlayerRef.current.playVideo();
+                        }
+                    }
+                }, 1000);
+
+                return () => {
+                    if (introTimerRef.current) clearInterval(introTimerRef.current);
+                };
+            }, [activePlayingSong, isTelaoMode]);
+
+            useEffect(() => {
+                if (queue.length === 0 && backgroundSongActive && !activePlayingSong) {
+                    const videoId = backgroundSongActive.videoId || getYouTubeVideoId(backgroundSongActive.youtubeLink);
+                    if (videoId) {
+                        db.collection('settings').doc('activePlaying').set({ 
+                            song: { ...backgroundSongActive, videoId: videoId, isBackground: true, timestamp: Date.now() } 
+                        });
+                    }
+                }
+            }, [queue, backgroundSongActive, activePlayingSong]);
+
+            useEffect(() => {
+                if (!isTelaoMode) return;
+                if (checkEndIntervalRef.current) clearInterval(checkEndIntervalRef.current);
+
+                checkEndIntervalRef.current = setInterval(() => {
+                    if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function' && typeof ytPlayerRef.current.getDuration === 'function') {
+                        const currentTime = ytPlayerRef.current.getCurrentTime();
+                        const duration = ytPlayerRef.current.getDuration();
+                        const currentActive = activePlayingSongRef.current;
+
+                        if (currentActive && currentActive.isBackground && currentTime > 0) {
+                            db.collection('settings').doc('backgroundSong').update({ 'song.savedTime': currentTime }).catch(() => {});
+                        }
+
+                        if (duration > 0 && currentTime > 0 && ((duration - currentTime < 1.0) || (currentTime >= duration))) {
+                            if (!currentActive || !currentActive.isBackground) {
+                                handleNextSong();
+                            } else {
+                                ytPlayerRef.current.seekTo(0);
+                                ytPlayerRef.current.playVideo();
+                            }
+                        }
+                    }
+                }, 1000);
+
+                return () => {
+                    if (checkEndIntervalRef.current) clearInterval(checkEndIntervalRef.current);
+                };
+            }, [isTelaoMode, activePlayingSong]);
+
+            useEffect(() => {
+                if (!isTelaoMode) return;
+                const currentPlaying = activePlayingSong;
+                const videoId = currentPlaying ? (currentPlaying.videoId || getYouTubeVideoId(currentPlaying.youtubeLink)) : null;
+
+                if (!videoId) {
+                    if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+                        ytPlayerRef.current.destroy();
+                        ytPlayerRef.current = null;
+                    }
+                    currentVideoIdRef.current = null;
+                    return;
+                }
+
+                if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+                    if (currentVideoIdRef.current !== videoId || (currentPlaying && currentPlaying.timestamp)) {
+                        currentVideoIdRef.current = videoId;
+                        const startTime = (currentPlaying.isBackground && currentPlaying.savedTime) ? currentPlaying.savedTime : 0;
+                        ytPlayerRef.current.loadVideoById({ videoId: videoId, startSeconds: startTime });
+                        ytPlayerRef.current.unMute();
+                        ytPlayerRef.current.setVolume(telaoVolume);
+                        if (currentPlaying.isBackground) ytPlayerRef.current.playVideo();
+                        else ytPlayerRef.current.pauseVideo();
+                    }
+                    return;
+                }
+
+                currentVideoIdRef.current = videoId;
+
+                const initPlayer = () => {
+                    if (window.YT && window.YT.Player) {
+                        if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+                            try { ytPlayerRef.current.destroy(); } catch(e){}
+                        }
+                        const startTime = (currentPlaying && currentPlaying.isBackground && currentPlaying.savedTime) ? currentPlaying.savedTime : 0;
+
+                        ytPlayerRef.current = new YT.Player('youtube-player-container', {
+                            height: '100%',
+                            width: '100%',
+                            videoId: videoId,
+                            playerVars: {
+                                'autoplay': 1,
+                                'enablejsapi': 1,
+                                'controls': 1,
+                                'mute': 0,
+                                'modestbranding': 1,
+                                'start': Math.floor(startTime),
+                                'rel': 0
+                            },
+                            events: {
+                                'onReady': (event) => {
+                                    event.target.unMute();
+                                    event.target.setVolume(telaoVolume);
+                                    if (isTelaoMutedState) event.target.pauseVideo();
+                                    else if (currentPlaying && currentPlaying.isBackground) event.target.playVideo();
+                                    else event.target.pauseVideo();
+                                },
+                                'onStateChange': (event) => {
+                                    if (event.data === YT.PlayerState.ENDED) {
+                                        const activeNow = activePlayingSongRef.current;
+                                        if (!activeNow || !activeNow.isBackground) handleNextSong();
+                                        else {
+                                            event.target.seekTo(0);
+                                            event.target.playVideo();
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                };
+
+                if (!window.YT || !window.YT.Player) {
+                    window.onYouTubeIframeAPIReady = initPlayer;
+                    setTimeout(initPlayer, 1000);
+                } else {
+                    initPlayer();
+                }
+            }, [isTelaoMode, activePlayingSong]);
+
+            const handleToggleTelaoPlayPause = async () => {
+                const newMuteState = !isTelaoMutedState;
+                try {
+                    await db.collection('settings').doc('telaoMute').set({ muted: newMuteState });
+                } catch (error) {
+                    console.error("Erro ao alterar estado do telão: ", error);
+                }
+            };
+
+            const handleVolumeChangeAdmin = async (newVol) => {
+                const volNum = Number(newVol);
+                setTelaoVolume(volNum);
+                try {
+                    await db.collection('settings').doc('telaoVolume').set({ volume: volNum });
+                } catch (error) {
+                    console.error("Erro ao atualizar volume:", error);
+                }
+            };
+
+            const handleClearTelaoCacheRemotely = async () => {
+                if (confirm('Deseja enviar comando para limpar o cache e reiniciar o Telão na TV Box?')) {
+                    try {
+                        if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function' && backgroundSongActive) {
+                            const currentTime = ytPlayerRef.current.getCurrentTime();
+                            await db.collection('settings').doc('backgroundSong').update({ 'song.savedTime': currentTime });
+                        }
+                        await db.collection('settings').doc('reloadCommand').set({ timestamp: Date.now() });
+                        alert('Comando enviado com sucesso para a TV Box! 🚀');
+                    } catch (error) {
+                        console.error("Erro ao enviar comando:", error);
+                        alert('Erro ao enviar comando.');
+                    }
+                }
+            };
+
+            const toggleFullScreen = () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(err => {
+                        console.error("Erro ao ativar tela cheia:", err);
+                    });
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    }
+                }
+            };
+
+            const handleAnotherVersion = async () => {
+                if (!activePlayingSong || activePlayingSong.isBackground) return;
+                setIsSwitchingVersion(true);
+                try {
+                    const currentVideoId = activePlayingSong.videoId || getYouTubeVideoId(activePlayingSong.youtubeLink);
+                    const newLink = await fetchYouTubeApiLink(activePlayingSong.title, activePlayingSong.artist, currentVideoId);
+                    
+                    if (!newLink) {
+                        alert('Não foi encontrada outra versão disponível.');
+                        setIsSwitchingVersion(false);
+                        return;
+                    }
+
+                    const newVideoId = getYouTubeVideoId(newLink);
+                    const updatedSong = {
+                        ...activePlayingSong,
+                        youtubeLink: newLink,
+                        videoId: newVideoId,
+                        timestamp: Date.now()
+                    };
+
+                    await db.collection('settings').doc('activePlaying').set({ song: updatedSong });
+                    
+                    if (activePlayingSong.id) {
+                        await db.collection('queue').doc(activePlayingSong.id).update({
+                            youtubeLink: newLink,
+                            videoId: newVideoId
+                        }).catch(() => {});
+                    }
+
+                    alert('🔄 Versão alterada com sucesso!');
+                } catch (error) {
+                    console.error("Erro ao buscar outra versão:", error);
+                    alert('Erro ao trocar de versão.');
+                } finally {
+                    setIsSwitchingVersion(false);
+                }
+            };
+
+            const handlePhoneChange = (e) => {
+                let value = e.target.value.replace(/\D/g, '');
+                if (value.length > 11) value = value.slice(0, 11);
+                if (value.length > 6) value = `(${value.slice(0, 2)}) ${value.slice(2, 7)}-${value.slice(7)}`;
+                else if (value.length > 2) value = `(${value.slice(0, 2)}) ${value.slice(2)}`;
+                else if (value.length > 0) value = `(${value}`;
+                setInputPhone(value);
+            };
+
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                if (!inputName.trim() || !inputPhone.trim()) return;
+                const nameFormatted = inputName.trim();
+                const phoneFormatted = inputPhone.trim();
+
+                if (lockedDeviceUser) {
+                    if (lockedDeviceUser.phone.replace(/\D/g, '') !== phoneFormatted.replace(/\D/g, '')) {
+                        alert(`Este aparelho está vinculado por 24h ao usuário "${lockedDeviceUser.name}" (${lockedDeviceUser.phone}).`);
+                        return;
+                    }
+                }
+
+                const userData = { name: nameFormatted, phone: phoneFormatted, timestamp: new Date().getTime() };
+                setUser(userData);
+                localStorage.setItem('toca_karaoke_user', JSON.stringify(userData));
+                localStorage.setItem('toca_karaoke_locked_device', JSON.stringify(userData));
+                setLockedDeviceUser(userData);
+
+                try {
+                    const cleanPhoneId = phoneFormatted.replace(/\D/g, '');
+                    await db.collection('users').doc(cleanPhoneId).set({
+                        name: nameFormatted,
+                        phone: phoneFormatted,
+                        lastLogin: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } catch (err) {
+                    console.error("Erro ao registrar usuário:", err);
+                }
+                setInputName('');
+                setInputPhone('');
+            };
+
+            const handleLogout = () => {
+                if (confirm('Deseja realmente sair da sua conta?')) {
+                    localStorage.removeItem('toca_karaoke_user');
+                    setUser(null);
+                }
+            };
+
+            const userActiveSongsCount = user ? queue.filter(item => item.phone === user.phone).length : 0;
+
+            const handleToggleMuteUser = async (phone) => {
+                const cleanPhone = phone.replace(/\D/g, '');
+                const isCurrentlyMuted = !!mutedPhones[cleanPhone];
+                const updatedMuted = { ...mutedPhones, [cleanPhone]: !isCurrentlyMuted };
+                try {
+                    await db.collection('settings').doc('mutedUsers').set(updatedMuted);
+                } catch (error) {
+                    console.error("Erro ao alterar silenciamento:", error);
+                }
+            };
+
+            const handleDeleteUser = async (userId, userName) => {
+                if (confirm(`Tem certeza que deseja deletar o usuário "${userName}"?`)) {
+                    try {
+                        await db.collection('users').doc(userId).delete();
+                    } catch (error) {
+                        console.error("Erro ao deletar usuário:", error);
+                    }
+                }
+            };
+
+            const handleAddSong = async (e) => {
+                e.preventDefault();
+                const cleanUserPhone = user.phone ? user.phone.replace(/\D/g, '') : '';
+                if (mutedPhones[cleanUserPhone]) {
+                    setMutedAlertMessage(`${user.name} você está impedida de pedir músicas agora. Chama o guerreiro.`);
+                    return;
+                }
+                if (isPaused) {
+                    setIsVideoMuted(true);
+                    setShowPausedModal(true);
+                    return;
+                }
+                if (!songTitle.trim() || !songArtist.trim()) return;
+
+                if (userActiveSongsCount >= 2) {
+                    alert('Você já possui 2 músicas na fila! Aguarde uma delas tocar.');
+                    return;
+                }
+
+                setIsSearchingAuto(true);
+                try {
+                    if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function' && backgroundSongActive) {
+                        const currentTime = ytPlayerRef.current.getCurrentTime();
+                        await db.collection('settings').doc('backgroundSong').update({ 'song.savedTime': currentTime });
+                    }
+
+                    const titleClean = songTitle.trim().toLowerCase();
+                    const artistClean = songArtist.trim().toLowerCase();
+                    const memoryDocId = `${artistClean}___${titleClean}`.replace(/[^a-z0-9]/g, '_');
+                    const memorySnap = await db.collection('memorizedLinks').doc(memoryDocId).get();
+                    
+                    let finalLink = "";
+                    let videoId = "";
+
+                    if (memorySnap.exists) {
+                        finalLink = memorySnap.data().youtubeLink;
+                        videoId = getYouTubeVideoId(finalLink);
+                    }
+
+                    if (!videoId) {
+                        finalLink = await fetchYouTubeApiLink(songTitle.trim(), songArtist.trim());
+                        videoId = getYouTubeVideoId(finalLink);
+                    }
+
+                    if (!videoId) {
+                        alert('Não foi possível encontrar um vídeo de karaokê adequado. Tente digitar de outra forma.');
+                        setIsSearchingAuto(false);
+                        return;
+                    }
+
+                    const songData = {
+                        title: songTitle.trim(),
+                        artist: songArtist.trim(),
+                        user: user.name,
+                        phone: user.phone,
+                        youtubeLink: finalLink,
+                        videoId: videoId,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+
+                    const docRef = await db.collection('queue').add(songData);
+                    
+                    const queueSnapshot = await db.collection('queue').orderBy('createdAt', 'asc').get();
+                    const freshQueue = queueSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    
+                    const activePlayingDoc = await db.collection('settings').doc('activePlaying').get();
+                    const currentActive = activePlayingDoc.exists ? activePlayingDoc.data().song : null;
+                    const isTelaoFree = !currentActive || currentActive.isBackground;
+
+                    if (freshQueue.length === 1 && isTelaoFree) {
+                        await db.collection('settings').doc('activePlaying').set({ 
+                            song: { id: docRef.id, ...songData, timestamp: Date.now() } 
+                        });
+                    }
+
+                    setSongTitle('');
+                    setSongArtist('');
+                    alert('Música enviada para a fila / telão com sucesso! 🎤');
+                } catch (error) {
+                    console.error("Erro ao adicionar música:", error);
+                    alert('Erro ao processar pedido.');
+                } finally {
+                    setIsSearchingAuto(false);
+                }
+            };
+
+            const handleUnmuteVideo = () => {
+                if (videoRef.current) {
+                    videoRef.current.muted = false;
+                    videoRef.current.play();
+                    setIsVideoMuted(false);
+                }
+            };
+
+            const handleAdminLogin = (e) => {
+                e.preventDefault();
+                if (adminPassword === 'toca10karaoke') {
+                    setIsAdmin(true);
+                    localStorage.setItem('toca_karaoke_admin', JSON.stringify({ timestamp: new Date().getTime() }));
+                    setAdminModal(false);
+                    setAdminPassword('');
+                } else {
+                    alert('Senha incorreta!');
+                }
+            };
+
+            const handleAdminLogout = () => {
+                localStorage.removeItem('toca_karaoke_admin');
+                setIsAdmin(false);
+                setShowAdminMirror(false);
+            };
+
+            const handleSaveYouTubeLink = async (songId) => {
+                const linkToSave = youtubeInputs[songId] !== undefined ? youtubeInputs[songId] : (queue.find(i => i.id === songId)?.youtubeLink || '');
+                if (!linkToSave.trim()) return alert('Cole um link válido!');
+                const videoId = getYouTubeVideoId(linkToSave.trim());
+                try {
+                    await db.collection('queue').doc(songId).update({ youtubeLink: linkToSave.trim(), videoId: videoId });
+                    alert('Link salvo com sucesso! 💾');
+                } catch (error) {
+                    console.error("Erro ao salvar link:", error);
+                }
+            };
+
+            const handleMemorizeLink = async (song) => {
+                const linkToMemorize = youtubeInputs[song.id] !== undefined ? youtubeInputs[song.id] : (song.youtubeLink || '');
+                if (!linkToMemorize.trim()) return alert('Insira o link correto antes de memorizar!');
+                const videoId = getYouTubeVideoId(linkToMemorize.trim());
+                if (!videoId) return alert('Link inválido.');
+
+                try {
+                    const titleClean = song.title.trim().toLowerCase();
+                    const artistClean = song.artist.trim().toLowerCase();
+                    const memoryDocId = `${artistClean}___${titleClean}`.replace(/[^a-z0-9]/g, '_');
+
+                    await db.collection('memorizedLinks').doc(memoryDocId).set({
+                        title: song.title.trim(),
+                        artist: song.artist.trim(),
+                        youtubeLink: linkToMemorize.trim(),
+                        videoId: videoId,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    await db.collection('queue').doc(song.id).update({ youtubeLink: linkToMemorize.trim(), videoId: videoId });
+                    alert(`🧠 Memorizado com sucesso para "${song.title}"!`);
+                } catch (error) {
+                    console.error("Erro ao memorizar:", error);
+                }
+            };
+
+            const handlePlayOnTelao = async (song) => {
+                const link = youtubeInputs[song.id] !== undefined ? youtubeInputs[song.id] : (song.youtubeLink || '');
+                if (!link.trim()) return alert('Cole um link válido!');
+                const videoId = getYouTubeVideoId(link);
+                if (!videoId) return alert('Link inválido.');
+
+                try {
+                    if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function' && backgroundSongActive) {
+                        const currentTime = ytPlayerRef.current.getCurrentTime();
+                        await db.collection('settings').doc('backgroundSong').update({ 'song.savedTime': currentTime });
+                    }
+
+                    await db.collection('queue').doc(song.id).update({ youtubeLink: link.trim(), videoId: videoId });
+                    await db.collection('settings').doc('activePlaying').set({ song: null });
+
+                    if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+                        ytPlayerRef.current.loadVideoById(videoId);
+                        ytPlayerRef.current.pauseVideo();
+                    }
+
+                    setTimeout(async () => {
+                        await db.collection('settings').doc('activePlaying').set({ 
+                            song: { 
+                                id: song.id, title: song.title, artist: song.artist, user: song.user,
+                                phone: song.phone || '', youtubeLink: link.trim(), videoId: videoId, timestamp: Date.now() 
+                            } 
+                        });
+                    }, 100);
+                } catch (error) {
+                    console.error("Erro ao reproduzir:", error);
+                }
+            };
+
+            const handlePlayBackgroundSong = async (e) => {
+                e.preventDefault();
+                if (!backgroundLinkInput.trim()) return;
+                const videoId = getYouTubeVideoId(backgroundLinkInput.trim());
+                if (!videoId) return alert('Link inválido.');
+
+                try {
+                    const bgSong = {
+                        title: 'Música de Fundo / Ambiente', artist: 'Bar Toca do Guerreiro', user: 'Administração',
+                        videoId: videoId, youtubeLink: backgroundLinkInput.trim(), savedTime: 0, isBackground: true, timestamp: Date.now()
+                    };
+
+                    await db.collection('settings').doc('backgroundSong').set({ song: bgSong });
+                    if (queue.length === 0) {
+                        await db.collection('settings').doc('activePlaying').set({ song: bgSong });
+                        if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+                            ytPlayerRef.current.loadVideoById(videoId);
+                            ytPlayerRef.current.unMute();
+                            ytPlayerRef.current.setVolume(telaoVolume);
+                            ytPlayerRef.current.playVideo();
+                        }
+                    }
+                    setBackgroundLinkInput('');
+                    alert('Música de fundo configurada com memória de tempo! 🎵');
+                } catch (error) {
+                    console.error("Erro ao ativar fundo:", error);
+                }
+            };
+
+            const handleStopBackgroundSong = async () => {
+                await db.collection('settings').doc('backgroundSong').set({ song: null });
+                if (activePlayingSong && activePlayingSong.isBackground) {
+                    await db.collection('settings').doc('activePlaying').set({ song: null });
+                }
+            };
+
+            const handleDeleteSong = async (id) => {
+                if (confirm('Remover esta música da fila?')) await db.collection('queue').doc(id).delete();
+            };
+
+            const handleSaveEdit = async (e) => {
+                e.preventDefault();
+                if (!editingSong.title.trim() || !editingSong.artist.trim()) return;
+                await db.collection('queue').doc(editingSong.id).update({ title: editingSong.title.trim(), artist: editingSong.artist.trim() });
+                setEditingSong(null);
+            };
+
+            const handleResetNotes = async () => {
+                if (confirm('Zerar histórico e reações?')) {
+                    const batch = db.batch();
+                    history.forEach(item => batch.delete(db.collection('history').doc(item.id)));
+                    await batch.commit();
+                }
+            };
+
+            const handleTogglePause = async () => {
+                await db.collection('settings').doc('status').set({ paused: !isPaused });
+            };
+
+            const openTelaoWindow = () => window.open(window.location.pathname + '?telao=true', '_blank');
+
+            const handleSendReaction = async (emojiSymbol) => {
+                if (globalCooldownSeconds > 0) return;
+
+                const currentActive = activePlayingSongRef.current;
+                if (!currentActive || !currentActive.id || !user || currentActive.isBackground) return;
+
+                if (currentActive.phone && currentActive.phone === user.phone) {
+                    alert('Você não pode reagir à sua própria performance! 😉');
+                    return;
+                }
+
+                const userPhone = user.phone;
+                const historyRef = db.collection('history').doc(currentActive.id);
+                
+                try {
+                    const docSnap = await historyRef.get();
+                    let shouldTriggerStars = false;
+
+                    if (docSnap.exists) {
+                        const data = docSnap.data();
+                        const reactedUsers = data.reactedUsers || {};
+                        const userEmojis = reactedUsers[userPhone] || [];
+
+                        if (userEmojis.includes(emojiSymbol)) {
+                            alert('Você já utilizou esta reação nesta música!');
+                            return;
+                        }
+
+                        const reactions = data.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
+                        const oldScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
+                        
+                        reactions[emojiSymbol] = (reactions[emojiSymbol] || 0) + 1;
+                        const newScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
+
+                        if (newScore >= 3 && Math.floor(newScore / 3) > Math.floor(oldScore / 3)) shouldTriggerStars = true;
+
+                        await historyRef.update({
+                            [`reactions.${emojiSymbol}`]: firebase.firestore.FieldValue.increment(1),
+                            [`reactedUsers.${userPhone}`]: [...userEmojis, emojiSymbol]
+                        });
+                    } else {
+                        const initialReactions = { '🙉': 0, '❤️': 0, '👏': 0 };
+                        initialReactions[emojiSymbol] = 1;
+                        await historyRef.set({
+                            title: currentActive.title, artist: currentActive.artist, user: currentActive.user,
+                            phone: currentActive.phone || '', reactions: initialReactions, reactedUsers: { [userPhone]: [emojiSymbol] },
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    }
+
+                    await db.collection('settings').doc('celebration').set({ emoji: emojiSymbol, type: shouldTriggerStars ? 'stars' : 'reaction', timestamp: Date.now() });
+                } catch (err) {
+                    console.error("Erro ao registrar reação:", err);
+                }
+            };
+
+            const rankedHistory = history.map(item => {
+                const reactions = item.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
+                const totalScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
+                return { ...item, reactions, totalScore };
+            }).sort((a, b) => b.totalScore - a.totalScore);
+
+            const topSinger = rankedHistory.length > 0 && rankedHistory[0].totalScore > 0 ? rankedHistory[0] : null;
+
+            if (isTelaoMode) {
+                const currentPlaying = activePlayingSong;
+                const nextSongInQueue = queue.length > 1 ? queue[1] : (queue.length === 1 && currentPlaying && currentPlaying.isBackground ? queue[0] : null);
+
+                return React.createElement(
+                    'div',
+                    { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-0 overflow-hidden select-none relative w-screen h-screen' },
+                    activeGuerreiros.map(g => React.createElement(FloatingGuerreiro, { key: g.id, emoji: g.emoji, onFinish: () => setActiveGuerreiros(prev => prev.filter(item => item.id !== g.id)) })),
+                    React.createElement(
+                        'div',
+                        { className: 'absolute inset-0 pointer-events-none overflow-hidden z-50 flex items-center justify-center' },
+                        starMessages.map((id) => React.createElement(
+                            'div',
+                            { key: id, className: 'absolute flex flex-col items-center floating-star-message bg-gradient-to-r from-amber-500/95 via-yellow-400/95 to-amber-600/95 border-2 border-yellow-200 text-zinc-950 font-black px-8 py-4 rounded-3xl shadow-2xl text-2xl sm:text-4xl text-center' },
+                            React.createElement('div', { className: 'flex gap-3 text-4xl sm:text-6xl mb-1 animate-bounce' }, '⭐', '🌟', '⭐'),
+                            'Tá mandando bem! 👏'
+                        ))
+                    ),
+                    introCountdown ? React.createElement(
+                        'div',
+                        { className: 'absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center z-50 p-6 text-center' },
+                        React.createElement(
+                            'div',
+                            { className: 'bg-gradient-to-br from-amber-500/20 to-zinc-900 border border-amber-500/50 p-10 rounded-3xl shadow-2xl max-w-2xl w-full' },
+                            React.createElement('span', { className: 'text-amber-400 font-bold uppercase tracking-widest text-sm mb-2 block' }, '🎤 Próxima Performance'),
+                            React.createElement('h2', { className: 'text-3xl sm:text-5xl font-extrabold text-zinc-100 mb-3' }, 'Atenção, ', React.createElement('span', { className: 'text-amber-400' }, introCountdown.song.user), '!'),
+                            React.createElement('p', { className: 'text-zinc-300 text-lg mb-6' }, 'Sua música ', React.createElement('span', { className: 'font-bold text-amber-300' }, `"${introCountdown.song.title}"`), ' começa em:'),
+                            React.createElement('div', { className: 'w-28 h-28 mx-auto rounded-full bg-amber-500 text-zinc-950 flex items-center justify-center text-6xl font-black shadow-lg animate-bounce' }, introCountdown.count)
+                        )
+                    ) : null,
+                    React.createElement(
+                        'div',
+                        { className: 'absolute top-4 left-6 flex items-center gap-3 z-10' },
+                        React.createElement('span', { className: 'bg-amber-500 text-zinc-950 font-black px-4 py-1.5 rounded-xl text-sm uppercase' }, '🖥️ Telão Toca do Guerreiro'),
+                        currentPlaying && !isTelaoMutedState && React.createElement('span', { className: 'bg-zinc-900 border border-zinc-800 text-zinc-300 px-4 py-1.5 rounded-xl text-sm font-bold' }, currentPlaying.isBackground ? '🎵 Som Ambiente' : `Cantando: ${currentPlaying.user} — ${currentPlaying.title}`),
+                        React.createElement('button', { 
+                            onClick: toggleFullScreen, 
+                            className: `border font-bold px-3 py-1.5 rounded-xl text-xs shadow transition ${isFullscreenActive ? 'bg-amber-500 text-zinc-950 border-amber-400' : 'bg-zinc-900 text-amber-400 border-amber-500/50 hover:bg-amber-500 hover:text-zinc-950'}` 
+                        }, isFullscreenActive ? '⛶ Sair Tela Cheia' : '⛶ Tela Cheia')
+                    ),
+                    
+                    React.createElement(
+                        'div',
+                        { className: 'w-screen h-screen bg-black relative' },
+                        React.createElement('div', { id: 'youtube-player-container' }),
+                        !currentPlaying && React.createElement(
+                            'div',
+                            { className: 'absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-zinc-950 z-20' },
+                            React.createElement('h2', { className: 'text-3xl font-extrabold text-amber-500 mb-2' }, 'Aguardando Próxima Música...'),
+                            React.createElement('p', { className: 'text-zinc-400' }, 'Peça uma música ou adicione uma música de fundo no Painel Admin 🎤')
+                        ),
+                        isTelaoMutedState && React.createElement(
+                            'div',
+                            { className: 'absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center z-30 p-6 text-center' },
+                            React.createElement('h2', { className: 'text-3xl font-extrabold text-amber-500 mb-2' }, '⏸️ Música Pausada pelo Administrador'),
+                            React.createElement('p', { className: 'text-zinc-400' }, 'O telão está pausado. Ao retomar, continuará exatamente de onde parou!')
+                        )
+                    ),
+                    React.createElement(
+                        'div',
+                        { className: 'absolute bottom-3 right-4 z-10 max-w-[200px] w-full' },
+                        nextSongInQueue && !isTelaoMutedState && React.createElement(
+                            'div',
+                            { className: 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 text-zinc-950 px-2.5 py-1.5 rounded-lg shadow-md border border-yellow-200 animate-pulse flex flex-col gap-0 text-right' },
+                            React.createElement('span', { className: 'text-[8px] font-black uppercase tracking-wider bg-zinc-950 text-amber-400 px-1.5 py-0.2 rounded self-end' }, 'PRÓXIMA'),
+                            React.createElement('h4', { className: 'text-[11px] font-black leading-tight truncate' }, `"${nextSongInQueue.title}"`),
+                            React.createElement('p', { className: 'text-[9px] font-bold text-zinc-900 truncate' }, `${nextSongInQueue.user}`)
+                        )
+                    )
+                );
+            }
+
+            if (!user) {
+                return React.createElement(
+                    'div',
+                    { className: 'flex flex-col items-center justify-center min-h-screen px-4 bg-gradient-to-b from-zinc-900 to-zinc-950 py-8' },
+                    React.createElement(
+                        'div',
+                        { className: 'w-full max-w-md bg-zinc-900 border border-amber-500/30 rounded-2xl overflow-hidden shadow-2xl' },
+                        React.createElement('div', { className: 'w-full h-48 sm:h-56 overflow-hidden border-b border-amber-500/30' }, React.createElement('img', { src: 'banner.jpg', alt: 'Toca do Guerreiro', className: 'w-full h-full object-cover' })),
+                        React.createElement(
+                            'div',
+                            { className: 'p-8' },
+                            React.createElement(
+                                'div',
+                                { className: 'text-center mb-6' },
+                                React.createElement('span', { className: 'bg-amber-500/10 text-amber-400 text-xs font-semibold px-3 py-1 rounded-full uppercase' }, 'Toca do Guerreiro'),
+                                React.createElement('h1', { className: 'text-3xl font-extrabold text-amber-500 mt-3' }, 'Karaokê'),
+                                React.createElement('p', { className: 'text-zinc-400 text-sm mt-1' }, lockedDeviceUser ? 'Aparelho vinculado. Confirme seus dados:' : 'Informe seus dados para participar')
+                            ),
+                            React.createElement(
+                                'form',
+                                { onSubmit: handleLogin, className: 'space-y-4' },
+                                React.createElement(
+                                    'div',
+                                    null,
+                                    React.createElement('label', { className: 'block text-xs font-medium text-zinc-400 mb-1' }, 'Seu Nome ou Apelido'),
+                                    React.createElement('input', {
+                                        type: 'text', required: true, value: inputName,
+                                        onChange: (e) => setInputName(e.target.value), placeholder: 'Ex: João Cantor',
+                                        className: 'w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm'
+                                    })
+                                ),
+                                React.createElement(
+                                    'div',
+                                    null,
+                                    React.createElement('label', { className: 'block text-xs font-medium text-zinc-400 mb-1' }, 'Número de Celular (WhatsApp)'),
+                                    React.createElement('input', {
+                                        type: 'text', required: true, value: inputPhone,
+                                        onChange: handlePhoneChange, placeholder: '(12) 99999-9999',
+                                        className: 'w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm'
+                                    })
+                                ),
+                                React.createElement('button', { type: 'submit', className: 'w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold py-3 rounded-xl shadow-lg shadow-amber-500/20' }, 'Entrar no Karaokê')
+                            )
+                        )
+                    )
+                );
+            }
+
+            const currentActiveHistory = activePlayingSong && !activePlayingSong.isBackground && history.find(h => h.id === activePlayingSong.id);
+            const userUsedEmojis = currentActiveHistory && currentActiveHistory.reactedUsers ? (currentActiveHistory.reactedUsers[user.phone] || []) : [];
+            const isUserTheSinger = activePlayingSong && !activePlayingSong.isBackground && activePlayingSong.phone === user.phone;
+
+            return React.createElement(
+                'div',
+                { className: 'max-w-4xl mx-auto px-4 py-8 relative' },
+                isAdmin && showAdminMirror && React.createElement(FloatingTelaoMirror, { onClose: () => setShowAdminMirror(false) }),
+                React.createElement('div', { className: 'w-full h-48 sm:h-72 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl mb-6' }, React.createElement('img', { src: 'banner.jpg', alt: 'Toca do Guerreiro', className: 'w-full h-full object-cover' })),
+                
+                activePlayingSong && !activePlayingSong.isBackground && React.createElement(
+                    'div',
+                    { className: 'bg-gradient-to-r from-red-500/20 via-amber-500/10 to-zinc-900 border border-red-500/40 rounded-2xl p-5 mb-6 flex flex-col gap-4 shadow-xl' },
+                    React.createElement(
+                        'div',
+                        { className: 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4' },
+                        React.createElement(
+                            'div',
+                            { className: 'flex items-center gap-4 text-center sm:text-left' },
+                            React.createElement('div', { className: 'w-14 h-14 rounded-2xl bg-red-500 text-zinc-950 flex items-center justify-center text-3xl font-black shrink-0 animate-pulse' }, '🎤'),
+                            React.createElement(
+                                'div',
+                                null,
+                                React.createElement('span', { className: 'text-xs font-bold text-red-400 uppercase tracking-widest block' }, 'Tocando Agora no Telão'),
+                                React.createElement('h3', { className: 'text-lg sm:text-xl font-extrabold text-zinc-100' }, `${activePlayingSong.title} - ${activePlayingSong.artist}`),
+                                React.createElement('p', { className: 'text-xs text-zinc-400' }, `Cantor(a): ${activePlayingSong.user}`)
+                            )
+                        ),
+                        isAdmin && React.createElement(
+                            'button',
+                            {
+                                onClick: handleAnotherVersion,
+                                disabled: isSwitchingVersion,
+                                className: 'bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-zinc-100 font-bold px-4 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg self-center sm:self-auto'
+                            },
+                            isSwitchingVersion ? '🔍 Buscando...' : '🔄 Outra Versão'
+                        )
+                    ),
+                    React.createElement(
+                        'div',
+                        { className: 'pt-2 border-t border-red-500/20 flex flex-col items-center' },
+                        React.createElement('span', { className: 'text-xs font-bold text-amber-400 uppercase mb-2 text-center' }, 
+                            isUserTheSinger ? '⚠️ Você é o cantor desta música' : 
+                            globalCooldownSeconds > 0 ? `⏳ Aguarde ${globalCooldownSeconds}s (guerreiro na tela)...` : 
+                            '⭐ Avalie a performance com reações:'
+                        ),
+                        React.createElement(
+                            'div',
+                            { className: 'flex items-center justify-center gap-4 sm:gap-6' },
+                            ['🙉', '❤️', '👏'].map(emoji => {
+                                const alreadyUsedThisEmoji = userUsedEmojis.includes(emoji);
+                                const isDisabled = isUserTheSinger || alreadyUsedThisEmoji || globalCooldownSeconds > 0;
+                                return React.createElement('button', {
+                                    key: emoji, onClick: () => handleSendReaction(emoji),
+                                    disabled: isDisabled,
+                                    className: `relative text-4xl sm:text-5xl p-4 rounded-2xl bg-zinc-950/85 border transition-all ${isDisabled ? 'opacity-40 border-zinc-800 cursor-not-allowed grayscale' : 'border-zinc-800 hover:border-amber-500 hover:scale-110 shadow-lg'}`
+                                }, emoji, alreadyUsedThisEmoji && React.createElement('span', { className: 'absolute -top-1 -right-1 bg-amber-500 text-zinc-950 font-black text-[10px] w-5 h-5 rounded-full flex items-center justify-center' }, '✓'));
+                            })
+                        )
+                    )
+                ),
+
+                React.createElement(
+                    'div',
+                    { className: 'bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-zinc-900 border border-amber-500/40 rounded-2xl p-4 sm:p-5 mb-6 flex items-center gap-4 shadow-xl' },
+                    React.createElement('div', { className: 'w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-amber-500 text-zinc-950 flex items-center justify-center text-2xl font-black shrink-0' }, '👑'),
+                    React.createElement(
+                        'div',
+                        { className: 'flex-1 min-w-0' },
+                        React.createElement('span', { className: 'text-[11px] font-bold text-amber-400 uppercase tracking-widest block' }, 'Destaque da Noite (Mais ❤️ e 👏)'),
+                        topSinger ? React.createElement(
+                            'div',
+                            { className: 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mt-0.5' },
+                            React.createElement(
+                                'div',
+                                null,
+                                React.createElement('h3', { className: 'text-lg sm:text-xl font-extrabold text-zinc-100 truncate' }, topSinger.user),
+                                React.createElement('p', { className: 'text-xs text-zinc-400 truncate' }, `${topSinger.title} - ${topSinger.artist}`)
+                            ),
+                            React.createElement('div', { className: 'bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold px-3 py-1 rounded-xl' }, `❤️ ${topSinger.reactions['❤️'] || 0} | 👏 ${topSinger.reactions['👏'] || 0}`)
+                        ) : React.createElement('p', { className: 'text-sm text-zinc-400 mt-0.5' }, 'Ainda sem destaques na noite.')
+                    )
+                ),
+                React.createElement(
+                    'header',
+                    { className: 'flex justify-between items-center bg-zinc-900 border border-zinc-800 p-4 rounded-2xl mb-8' },
+                    React.createElement(
+                        'div',
+                        { className: 'flex items-center gap-4' },
+                        React.createElement(
+                            'div',
+                            null,
+                            React.createElement('span', { className: 'text-xs text-amber-400 font-semibold uppercase' }, 'Cantor(a) conectado(a)'),
+                            React.createElement(
+                                'div',
+                                { className: 'flex items-center gap-2 mt-0.5' },
+                                React.createElement('h2', { className: 'text-xl font-bold text-zinc-100' }, user.name),
+                                React.createElement('button', { onClick: handleLogout, className: 'text-[11px] bg-red-500/15 hover:bg-red-500/25 text-red-400 font-semibold px-2.5 py-1 rounded-lg border border-red-500/30' }, 'Sair 🚪')
+                            )
+                        )
+                    ),
+                    React.createElement(
+                        'div',
+                        { className: 'flex items-center gap-3' },
+                        !isAdmin ? React.createElement('button', { onClick: () => setAdminModal(true), className: 'text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2 rounded-xl border border-zinc-700' }, 'Área do Admin') : React.createElement(
+                            'div',
+                            { className: 'flex items-center gap-2' },
+                            React.createElement('span', { className: 'bg-amber-500/20 text-amber-400 text-xs font-bold px-3 py-1.5 rounded-xl border border-amber-500/30' }, 'Modo Admin'),
+                            React.createElement('button', { onClick: handleAdminLogout, className: 'text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-2 rounded-xl border border-red-500/30' }, 'Sair Admin')
+                        )
+                    )
+                ),
+                isAdmin && React.createElement(
+                    'div',
+                    { className: 'bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 mb-8 space-y-4' },
+                    React.createElement('h3', { className: 'text-amber-400 font-bold text-base flex items-center gap-2' }, '👑 Painel de Administração'),
+                    React.createElement(
+                        'div',
+                        { className: 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 items-center' },
+                        React.createElement('button', { onClick: openTelaoWindow, className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl text-xs flex items-center justify-center text-center' }, '🖥️ Telão'),
+                        React.createElement('button', { onClick: () => setShowAdminMirror(!showAdminMirror), className: `${showAdminMirror ? 'bg-purple-600 text-zinc-100' : 'bg-zinc-800 text-purple-400 border border-purple-500/40'} font-bold px-3 py-2.5 rounded-xl text-xs text-center` }, showAdminMirror ? '👁️ Fechar Espelho' : '🖥️ Espelho Telão'),
+                        React.createElement('button', { onClick: handleToggleTelaoPlayPause, className: `${isTelaoMutedState ? 'bg-emerald-500 text-zinc-950' : 'bg-red-500/20 text-red-400 border border-red-500/40'} font-bold px-3 py-2.5 rounded-xl text-xs text-center` }, isTelaoMutedState ? '▶️ Tocar Telão' : '⏸️ Pausar Telão'),
+                        React.createElement('button', { onClick: () => setShowUsersModal(true), className: 'bg-sky-500 hover:bg-sky-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl text-xs text-center' }, `👥 Usuários (${usersList.length})`),
+                        React.createElement('button', { onClick: handleNextSong, className: 'bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl text-xs text-center' }, '⏭️ Próxima'),
+                        React.createElement('button', { onClick: handleTogglePause, className: `${isPaused ? 'bg-emerald-500 text-zinc-950' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'} font-bold px-3 py-2.5 rounded-xl text-xs text-center` }, isPaused ? '▶️ Retomar' : '⏸️ Pausar Pedidos')
+                    ),
+                    React.createElement(
+                        'div',
+                        { className: 'bg-zinc-900 border border-zinc-800 p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4' },
+                        React.createElement(
+                            'div',
+                            { className: 'flex items-center gap-3 w-full sm:w-auto flex-1' },
+                            React.createElement('span', { className: 'text-xs font-bold text-amber-400 whitespace-nowrap' }, `🔊 Volume: ${telaoVolume}%`),
+                            React.createElement('input', {
+                                type: 'range', min: '0', max: '100', value: telaoVolume,
+                                onChange: (e) => handleVolumeChangeAdmin(e.target.value),
+                                className: 'w-full sm:w-48 accent-amber-500 cursor-pointer'
+                            })
+                        ),
+                        React.createElement(
+                            'div',
+                            { className: 'flex items-center gap-2 w-full sm:w-auto justify-end' },
+                            React.createElement('button', { onClick: handleClearTelaoCacheRemotely, className: 'bg-red-600 hover:bg-red-700 text-zinc-100 font-bold px-3.5 py-2.5 rounded-xl text-xs shadow' }, '📺 Limpar Telão')
+                        )
+                    ),
+                    React.createElement(
+                        'div',
+                        { className: 'flex justify-end pt-1' },
+                        React.createElement('button', { onClick: handleResetNotes, className: 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold px-3 py-2 rounded-xl text-xs' }, '🗑️ Zerar Reações e Histórico')
+                    ),
+                    React.createElement(
+                        'div',
+                        { className: 'bg-zinc-900 border border-zinc-800 p-3.5 rounded-xl' },
+                        React.createElement('h4', { className: 'text-zinc-200 text-xs font-bold mb-1.5' }, '🎵 Música de Fundo (Com Memória de Tempo)'),
+                        React.createElement(
+                            'form',
+                            { onSubmit: handlePlayBackgroundSong, className: 'flex flex-col sm:flex-row gap-2' },
+                            React.createElement('input', {
+                                type: 'text', placeholder: 'Cole o link do YouTube da música de fundo...',
+                                value: backgroundLinkInput, onChange: (e) => setBackgroundLinkInput(e.target.value),
+                                className: 'flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-amber-500'
+                            }),
+                            React.createElement(
+                                'div',
+                                { className: 'flex gap-2 justify-end' },
+                                React.createElement('button', { type: 'submit', className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-xs px-3.5 py-2 rounded-xl' }, '💾 Definir Fundo'),
+                                backgroundSongActive && React.createElement('button', { type: 'button', onClick: handleStopBackgroundSong, className: 'bg-red-500/20 text-red-400 border border-red-500/30 font-semibold text-xs px-3 py-2 rounded-xl' }, '⏹️ Parar Fundo')
+                            )
+                        ),
+                        backgroundSongActive && React.createElement('div', { className: 'mt-2 text-xs text-emerald-400 font-semibold' }, '🟢 Música de fundo configurada e memorizando o tempo.')
+                    )
+                ),
+                React.createElement(
+                    'div',
+                    { className: 'grid grid-cols-1 md:grid-cols-3 gap-8' },
+                    React.createElement(
+                        'div',
+                        { className: 'md:col-span-1' },
+                        React.createElement(
+                            'div',
+                            { className: 'bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sticky top-6' },
+                            React.createElement('h3', { className: 'text-lg font-bold text-zinc-100 mb-4' }, 'Pedir Música'),
+                            React.createElement(
+                                'form',
+                                { onSubmit: handleAddSong, className: 'space-y-4' },
+                                React.createElement(
+                                    'div',
+                                    null,
+                                    React.createElement('label', { className: 'block text-xs font-medium text-zinc-400 mb-1' }, 'Música'),
+                                    React.createElement('input', {
+                                        type: 'text', required: true, value: songTitle,
+                                        onChange: (e) => setSongTitle(e.target.value), placeholder: 'Ex: Evidências',
+                                        className: 'w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm'
+                                    })
+                                ),
+                                React.createElement(
+                                    'div',
+                                    null,
+                                    React.createElement('label', { className: 'block text-xs font-medium text-zinc-400 mb-1' }, 'Artista / Banda'),
+                                    React.createElement('input', {
+                                        type: 'text', required: true, value: songArtist,
+                                        onChange: (e) => setSongArtist(e.target.value), placeholder: 'Ex: Chitãozinho & Xororó',
+                                        className: 'w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm'
+                                    })
+                                ),
+                                React.createElement('button', {
+                                    type: 'submit', disabled: isSearchingAuto,
+                                    className: 'w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-zinc-950 font-bold py-3 rounded-xl shadow-lg text-sm mt-2'
+                                }, isSearchingAuto ? '🔍 Buscando karaokê...' : 'Pedir para o Telão 🎤')
+                            )
+                        )
+                    ),
+                    React.createElement(
+                        'div',
+                        { className: 'md:col-span-2 space-y-8' },
+                        React.createElement(
+                            'div',
+                            { className: 'bg-zinc-900 border border-zinc-800 rounded-2xl p-6' },
+                            React.createElement(
+                                'div',
+                                { className: 'flex justify-between items-center mb-4' },
+                                React.createElement('h3', { className: 'text-lg font-bold text-zinc-100' }, 'Fila de Espera'),
+                                React.createElement(
+                                    'div',
+                                    { className: 'flex items-center gap-2' },
+                                    React.createElement('button', { onClick: () => window.location.reload(), className: 'bg-zinc-800 text-amber-400 font-bold text-xs px-3 py-1.5 rounded-lg border border-zinc-700' }, '🔄 Atualizar'),
+                                    React.createElement('span', { className: 'bg-zinc-800 text-zinc-300 text-xs font-bold px-2.5 py-1 rounded-lg' }, `${queue.length} na fila`)
+                                )
+                            ),
+                            queue.length === 0 ? React.createElement('div', { className: 'text-center py-8 text-zinc-500 text-sm border border-dashed border-zinc-800 rounded-xl' }, 'Nenhuma música na fila no momento.') : React.createElement(
+                                'div',
+                                { className: 'space-y-4' },
+                                queue.map((item, index) => {
+                                    const isFirstInQueue = index === 0;
+                                    return React.createElement(
+                                        'div',
+                                        { key: item.id, className: `bg-zinc-950 border p-4 rounded-xl flex flex-col gap-3 ${isFirstInQueue ? 'border-amber-500/60 shadow-lg' : 'border-zinc-800'}` },
+                                        React.createElement(
+                                            'div',
+                                            { className: 'flex items-center justify-between gap-4' },
+                                            React.createElement(
+                                                'div',
+                                                { className: 'flex items-center gap-3' },
+                                                React.createElement('span', { className: `w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${isFirstInQueue ? 'bg-amber-500 text-zinc-950' : 'bg-zinc-800 text-zinc-400'}` }, index + 1),
+                                                React.createElement(
+                                                    'div',
+                                                    null,
+                                                    React.createElement(
+                                                        'div',
+                                                        { className: 'flex items-center gap-2 flex-wrap' },
+                                                        React.createElement('h4', { className: 'font-bold text-zinc-100 text-sm' }, item.title),
+                                                        isFirstInQueue && React.createElement('span', { className: 'bg-amber-500/20 border border-amber-500/40 text-amber-400 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase' }, '🎤 Tocando Agora')
+                                                    ),
+                                                    React.createElement('p', { className: 'text-xs text-zinc-400' }, `${item.artist} • `, React.createElement('span', { className: 'text-amber-400 font-medium' }, item.user))
+                                                )
+                                            ),
+                                            React.createElement(
+                                                'div',
+                                                { className: 'flex items-center gap-2' },
+                                                isAdmin && React.createElement('button', { onClick: () => setEditingSong(item), className: 'bg-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-lg border border-zinc-700' }, 'Editar'),
+                                                isAdmin && React.createElement('button', { onClick: () => handleDeleteSong(item.id), className: 'bg-red-500/20 text-red-400 text-xs px-3 py-1.5 rounded-lg border border-red-500/30' }, 'Excluir')
+                                            )
+                                        ),
+                                        isAdmin && React.createElement(
+                                            'div',
+                                            { className: 'flex flex-col sm:flex-row items-center gap-2 pt-2 border-t border-zinc-900' },
+                                            React.createElement('input', {
+                                                type: 'text', placeholder: 'Cole o link do YouTube aqui...',
+                                                value: youtubeInputs[item.id] !== undefined ? youtubeInputs[item.id] : (item.youtubeLink || ''),
+                                                onChange: (e) => setYoutubeInputs({ ...youtubeInputs, [item.id]: e.target.value }),
+                                                className: 'w-full sm:flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-amber-500'
+                                            }),
+                                            React.createElement(
+                                                'div',
+                                                { className: 'flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap' },
+                                                React.createElement('button', { onClick: () => handleMemorizeLink(item), className: 'bg-purple-600 text-zinc-100 font-bold text-xs px-3.5 py-2 rounded-xl' }, '🧠 Memorizar'),
+                                                React.createElement('button', { onClick: () => handleSaveYouTubeLink(item.id), className: 'bg-zinc-800 text-amber-400 border border-amber-500/30 font-semibold text-xs px-3 py-2 rounded-xl' }, '💾 Salvar Link'),
+                                                React.createElement('button', { onClick: () => handlePlayOnTelao(item), className: 'bg-emerald-500 text-zinc-950 font-bold text-xs px-3.5 py-2 rounded-xl' }, '🔄 Tocar Novamente')
+                                            )
+                                        )
+                                    );
+                                })
+                            )
+                        ),
+                        React.createElement(
+                            'div',
+                            { className: 'bg-zinc-900 border border-zinc-800 rounded-2xl p-6' },
+                            React.createElement(
+                                'div',
+                                { className: 'flex justify-between items-center mb-4' },
+                                React.createElement(
+                                    'div',
+                                    null,
+                                    React.createElement('h3', { className: 'text-lg font-bold text-zinc-100 mb-0.5' }, 'Ranking de Performances'),
+                                    React.createElement('p', { className: 'text-xs text-zinc-400' }, 'Reações recebidas pelas músicas que já tocaram!')
+                                ),
+                                React.createElement('button', { onClick: () => window.location.reload(), className: 'bg-zinc-800 text-amber-400 font-bold text-xs px-3 py-1.5 rounded-lg border border-zinc-700' }, '🔄 Atualizar')
+                            ),
+                            rankedHistory.length === 0 ? React.createElement('div', { className: 'text-center py-8 text-zinc-500 text-sm border border-dashed border-zinc-800 rounded-xl' }, 'Nenhuma música tocada ainda.') : React.createElement(
+                                'div',
+                                { className: 'space-y-3' },
+                                rankedHistory.map((item, index) => {
+                                    const r = item.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
+                                    return React.createElement(
+                                        'div',
+                                        { key: item.id, className: 'bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex items-center justify-between gap-4' },
+                                        React.createElement(
+                                            'div',
+                                            null,
+                                            React.createElement('span', { className: 'text-xs font-bold text-amber-500' }, `#${index + 1} no Ranking`),
+                                            React.createElement('h4', { className: 'font-bold text-zinc-100 text-sm mt-1' }, `${item.title} - ${item.artist}`),
+                                            React.createElement('p', { className: 'text-xs text-zinc-400' }, 'Cantado por: ', React.createElement('span', { className: 'text-amber-400 font-medium' }, item.user))
+                                        ),
+                                        React.createElement(
+                                            'div',
+                                            { className: 'bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-3' },
+                                            React.createElement('span', null, `🙉 ${r['🙉'] || 0}`),
+                                            React.createElement('span', null, `❤️ ${r['❤️'] || 0}`),
+                                            React.createElement('span', null, `👏 ${r['👏'] || 0}`)
+                                        )
+                                    );
+                                })
+                            )
+                        )
+                    )
+                ),
+                showPausedModal && React.createElement(
+                    'div',
+                    { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50' },
+                    React.createElement(
+                        'div',
+                        { className: 'bg-zinc-900 border border-amber-500/50 rounded-2xl p-6 w-full max-w-xs shadow-2xl text-center' },
+                        React.createElement(
+                            'div',
+                            { className: 'w-full aspect-[9/16] max-h-[50vh] rounded-xl overflow-hidden mb-3 border border-amber-500/30 bg-black mx-auto relative flex items-center justify-center' },
+                            React.createElement('video', { ref: videoRef, src: 'mensagem.mp4', autoPlay: true, loop: true, muted: isVideoMuted, playsInline: true, className: 'w-full h-full object-cover' }),
+                            isVideoMuted && React.createElement('button', { type: 'button', onClick: handleUnmuteVideo, className: 'absolute bottom-3 bg-amber-500 text-zinc-950 font-bold text-xs px-4 py-2 rounded-full shadow-lg animate-bounce' }, '🔊 Ligar Som')
+                        ),
+                        React.createElement('h3', { className: 'text-xl font-extrabold text-amber-500 mb-1' }, 'Pedidos Pausados!'),
+                        React.createElement('p', { className: 'text-xs text-zinc-300 mb-4' }, 'Os pedidos de músicas foram pausados pelo administrador.'),
+                        React.createElement('button', { type: 'button', onClick: () => setShowPausedModal(false), className: 'w-full bg-zinc-800 text-zinc-200 font-bold py-2.5 rounded-xl border border-zinc-700 text-sm' }, 'Fechar 👍')
+                    )
+                ),
+                mutedAlertMessage && React.createElement(
+                    'div',
+                    { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50' },
+                    React.createElement(
+                        'div',
+                        { className: 'bg-zinc-900 border border-red-500/50 rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center' },
+                        React.createElement('div', { className: 'w-14 h-14 bg-red-500/20 border border-red-500/40 rounded-2xl mx-auto flex items-center justify-center text-2xl mb-3' }, '🚫'),
+                        React.createElement('h3', { className: 'text-lg font-extrabold text-red-400 mb-2' }, 'Acesso Restrito'),
+                        React.createElement('p', { className: 'text-xs text-zinc-300 mb-5' }, mutedAlertMessage),
+                        React.createElement('button', { type: 'button', onClick: () => setMutedAlertMessage(null), className: 'w-full bg-zinc-800 text-zinc-200 font-bold py-2.5 rounded-xl border border-zinc-700 text-sm' }, 'Entendi 👍')
+                    )
+                ),
+                showUsersModal && React.createElement(
+                    'div',
+                    { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50' },
+                    React.createElement(
+                        'div',
+                        { className: 'bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[80vh] flex flex-col' },
+                        React.createElement(
+                            'div',
+                            { className: 'flex justify-between items-center mb-4' },
+                            React.createElement('h3', { className: 'text-lg font-bold text-zinc-100 flex items-center gap-2' }, '👥 Usuários Conectados'),
+                            React.createElement('button', { onClick: () => setShowUsersModal(false), className: 'text-zinc-400 text-sm font-bold px-2 py-1 bg-zinc-800 rounded-lg' }, '✕')
+                        ),
+                        React.createElement(
+                            'div',
+                            { className: 'flex-1 overflow-y-auto space-y-3 pr-1' },
+                            usersList.length === 0 ? React.createElement('div', { className: 'text-center py-8 text-zinc-500 text-xs border border-dashed border-zinc-800 rounded-xl' }, 'Nenhum usuário registrado.') : usersList.map((u) => {
+                                const cleanP = u.phone ? u.phone.replace(/\D/g, '') : '';
+                                const isMuted = !!mutedPhones[cleanP];
+                                return React.createElement(
+                                    'div',
+                                    { key: u.id, className: 'bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl flex items-center justify-between gap-3' },
+                                    React.createElement('div', null, React.createElement('h4', { className: 'font-bold text-zinc-100 text-sm' }, u.name), React.createElement('p', { className: 'text-xs text-zinc-400 font-mono' }, u.phone)),
+                                    React.createElement(
+                                        'div',
+                                        { className: 'flex items-center gap-2' },
+                                        React.createElement('button', { onClick: () => handleToggleMuteUser(u.phone), className: `text-xs font-bold px-3 py-2 rounded-xl border ${isMuted ? 'bg-red-500 text-zinc-950 border-red-400' : 'bg-zinc-800 text-zinc-300 border-zinc-700'}` }, isMuted ? '🔇 Silenciado' : '🔊 Silenciar'),
+                                        React.createElement('button', { onClick: () => handleDeleteUser(u.id, u.name), className: 'text-xs font-bold px-3 py-2 rounded-xl bg-red-500/20 text-red-400 border border-red-500/30' }, '🗑️ Deletar')
+                                    )
+                                );
+                            })
+                        ),
+                        React.createElement('div', { className: 'mt-4 pt-3 border-t border-zinc-800' }, React.createElement('button', { onClick: () => setShowUsersModal(false), className: 'w-full bg-zinc-800 text-zinc-200 font-bold py-2.5 rounded-xl text-sm' }, 'Fechar'))
+                    )
+                ),
+                adminModal && React.createElement(
+                    'div',
+                    { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50' },
+                    React.createElement(
+                        'div',
+                        { className: 'bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl' },
+                        React.createElement('h3', { className: 'text-lg font-bold text-zinc-100 mb-2' }, 'Acesso Restrito'),
+                        React.createElement('p', { className: 'text-xs text-zinc-400 mb-4' }, 'Insira a senha de administrador:'),
+                        React.createElement(
+                            'form',
+                            { onSubmit: handleAdminLogin, className: 'space-y-4' },
+                            React.createElement('input', {
+                                type: 'password', required: true, value: adminPassword,
+                                onChange: (e) => setAdminPassword(e.target.value), placeholder: 'Senha',
+                                className: 'w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:outline-none focus:border-amber-500 text-sm'
+                            }),
+                            React.createElement(
+                                'div',
+                                { className: 'flex gap-3' },
+                                React.createElement('button', { type: 'button', onClick: () => setAdminModal(false), className: 'w-1/2 bg-zinc-800 text-zinc-300 font-medium py-3 rounded-xl text-sm' }, 'Cancelar'),
+                                React.createElement('button', { type: 'submit', className: 'w-1/2 bg-amber-500 text-zinc-950 font-bold py-3 rounded-xl text-sm shadow-lg' }, 'Entrar')
+                            )
+                        )
+                    )
+                ),
+                editingSong && React.createElement(
+                    'div',
+                    { className: 'fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-55' },
+                    React.createElement(
+                        'div',
+                        { className: 'bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl' },
+                        React.createElement('h3', { className: 'text-lg font-bold text-zinc-100 mb-4' }, 'Editar Música da Fila'),
+                        React.createElement(
+                            'form',
+                            { onSubmit: handleSaveEdit, className: 'space-y-4' },
+                            React.createElement(
+                                'div',
+                                null,
+                                React.createElement('label', { className: 'block text-xs font-medium text-zinc-400 mb-1' }, 'Música'),
+                                React.createElement('input', {
+                                    type: 'text', required: true, value: editingSong.title,
+                                    onChange: (e) => setEditingSong({ ...editingSong, title: e.target.value }),
+                                    className: 'w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 text-sm'
+                                })
+                            ),
+                            React.createElement(
+                                'div',
+                                null,
+                                React.createElement('label', { className: 'block text-xs font-medium text-zinc-400 mb-1' }, 'Artista / Banda'),
+                                React.createElement('input', {
+                                    type: 'text', required: true, value: editingSong.artist,
+                                    onChange: (e) => setEditingSong({ ...editingSong, artist: e.target.value }),
+                                    className: 'w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-100 text-sm'
+                                })
+                            ),
+                            React.createElement(
+                                'div',
+                                { className: 'flex gap-3 pt-2' },
+                                React.createElement('button', { type: 'button', onClick: () => setEditingSong(null), className: 'w-1/2 bg-zinc-800 text-zinc-300 font-medium py-3 rounded-xl text-sm' }, 'Cancelar'),
+                                React.createElement('button', { type: 'submit', className: 'w-1/2 bg-amber-500 text-zinc-950 font-bold py-3 rounded-xl text-sm shadow-lg' }, 'Salvar')
+                            )
+                        )
+                    )
+                )
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+    </script>
+</body>
+</html>
