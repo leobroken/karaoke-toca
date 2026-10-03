@@ -77,7 +77,6 @@
             '👏': 'https://raw.githubusercontent.com/leobroken/karaoke-toca/main/guerreiro2.gif'
         };
 
-        // Ícones SVG Reutilizáveis
         const Icons = {
             Mic: () => React.createElement('svg', { className: 'w-4 h-4', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24', xmlns: 'http://www.w3.org/2000/svg' }, 
                 React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: '2', d: 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z' })
@@ -106,9 +105,6 @@
             ),
             Logout: () => React.createElement('svg', { className: 'w-4 h-4', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24', xmlns: 'http://www.w3.org/2000/svg' },
                 React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: '2', d: 'M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1' })
-            ),
-            Search: () => React.createElement('svg', { className: 'w-4 h-4', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24', xmlns: 'http://www.w3.org/2000/svg' },
-                React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: '2', d: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' })
             ),
             Volume: () => React.createElement('svg', { className: 'w-4 h-4', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24', xmlns: 'http://www.w3.org/2000/svg' },
                 React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: '2', d: 'M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z' })
@@ -407,7 +403,6 @@
                 }
             }, []);
 
-            // 🚀 FORÇA A TELA CHEIA AUTOMATICAMENTE AO ABRIR O TELÃO
             useEffect(() => {
                 if (!isTelaoMode) return;
 
@@ -417,7 +412,6 @@
                     }
                 };
 
-                // Tenta entrar em tela cheia logo no carregamento e em loops curtos caso o navegador bloqueie o primeiro instante
                 enterFullscreen();
                 const timer1 = setTimeout(enterFullscreen, 1000);
                 const timer2 = setTimeout(enterFullscreen, 3000);
@@ -428,7 +422,6 @@
                 };
             }, [isTelaoMode]);
 
-            // Apenas o Telão monitora o comando de recarregar/limpar cache do player
             useEffect(() => {
                 if (!isTelaoMode) return;
                 const unsubReload = db.collection('settings').doc('reloadCommand').onSnapshot(doc => {
@@ -1274,7 +1267,7 @@
                             return;
                         }
 
-                        const reactions = data.reactions || { '🙉': 0, '❤️️': 0, '👏': 0 };
+                        const reactions = data.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
                         const oldScore = (reactions['❤️'] || 0) + (reactions['👏'] || 0);
                         
                         reactions[emojiSymbol] = (reactions[emojiSymbol] || 0) + 1;
@@ -1506,7 +1499,7 @@
                                 React.createElement('h3', { className: 'text-lg sm:text-xl font-extrabold text-zinc-100 truncate' }, topSinger.user),
                                 React.createElement('p', { className: 'text-xs text-zinc-400 truncate' }, `${topSinger.title} - ${topSinger.artist}`)
                             ),
-                            React.createElement('div', { className: 'bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold px-3 py-1 rounded-xl' }, `❤️️ ${topSinger.reactions['❤️'] || 0} | 👏 ${topSinger.reactions['👏'] || 0}`)
+                            React.createElement('div', { className: 'bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold px-3 py-1 rounded-xl' }, `❤️ ${topSinger.reactions['❤️'] || 0} | 👏 ${topSinger.reactions['👏'] || 0}`)
                         ) : React.createElement('p', { className: 'text-sm text-zinc-400 mt-0.5' }, 'Ainda sem destaques na noite.')
                     )
                 ),
@@ -1543,40 +1536,42 @@
                     'div',
                     { className: 'bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 mb-8 space-y-4' },
                     React.createElement('h3', { className: 'text-amber-400 font-bold text-base flex items-center gap-2' }, '👑 Painel de Administração'),
+                    
+                    /* 🛠️ BOTÕES PRINCIPAIS ORGANIZADOS EM GRADE DE 2 COLUNAS */
                     React.createElement(
                         'div',
-                        { className: 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 items-center' },
-                        React.createElement('button', { onClick: openTelaoWindow, className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 text-center transition shadow-sm' }, React.createElement(Icons.Monitor), 'Telão'),
-                        React.createElement('button', { onClick: () => setShowAdminMirror(!showAdminMirror), className: `${showAdminMirror ? 'bg-purple-600 text-zinc-100' : 'bg-zinc-800 text-purple-400 border border-purple-500/40'} font-bold px-3 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 text-center transition shadow-sm` }, React.createElement(Icons.Monitor), showAdminMirror ? 'Fechar Espelho' : 'Espelho Telão'),
-                        React.createElement('button', { onClick: handleToggleTelaoPlayPause, className: `${isTelaoMutedState ? 'bg-emerald-500 text-zinc-950' : 'bg-red-500/20 text-red-400 border border-red-500/40'} font-bold px-3 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 text-center transition shadow-sm` }, isTelaoMutedState ? React.createElement(Icons.Play) : React.createElement(Icons.Pause), isTelaoMutedState ? 'Tocar Telão' : 'Pausar Telão'),
-                        React.createElement('button', { onClick: () => setShowUsersModal(true), className: 'bg-sky-500 hover:bg-sky-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 text-center transition shadow-sm' }, React.createElement(Icons.Users), `Usuários (${usersList.length})`),
-                        React.createElement('button', { onClick: handleNextSong, className: 'bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-3 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 text-center transition shadow-sm' }, React.createElement(Icons.Skip), 'Próxima')
+                        { className: 'grid grid-cols-2 gap-3' },
+                        React.createElement('button', { onClick: openTelaoWindow, className: 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm' }, React.createElement(Icons.Monitor), 'Telão'),
+                        React.createElement('button', { onClick: () => setShowAdminMirror(!showAdminMirror), className: `${showAdminMirror ? 'bg-purple-600 text-zinc-100' : 'bg-zinc-800 text-purple-400 border border-purple-500/40'} font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm` }, React.createElement(Icons.Monitor), showAdminMirror ? 'Fechar Espelho' : 'Espelho Telão'),
+                        React.createElement('button', { onClick: handleToggleTelaoPlayPause, className: `${isTelaoMutedState ? 'bg-emerald-500 text-zinc-950' : 'bg-red-500/20 text-red-400 border border-red-500/40'} font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm` }, isTelaoMutedState ? React.createElement(Icons.Play) : React.createElement(Icons.Pause), isTelaoMutedState ? 'Tocar Telão' : 'Pausar Telão'),
+                        React.createElement('button', { onClick: () => setShowUsersModal(true), className: 'bg-sky-500 hover:bg-sky-600 text-zinc-950 font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm' }, React.createElement(Icons.Users), `Usuários (${usersList.length})`),
+                        React.createElement('button', { onClick: handleNextSong, className: 'bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm' }, React.createElement(Icons.Skip), 'Próxima'),
+                        React.createElement('button', { onClick: handleTogglePause, className: `${isPaused ? 'bg-emerald-500 text-zinc-950' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'} font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm` }, isPaused ? React.createElement(Icons.Play) : React.createElement(Icons.Pause), isPaused ? 'Retomar Pedidos' : 'Pausar Pedidos')
                     ),
+
+                    /* 🎚️ BLOCO DE VOLUME E LIMPEZA */
                     React.createElement(
                         'div',
-                        { className: 'bg-zinc-900 border border-zinc-800 p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4' },
+                        { className: 'bg-zinc-900 border border-zinc-800 p-4 rounded-xl space-y-3' },
                         React.createElement(
                             'div',
-                            { className: 'flex items-center gap-3 w-full sm:w-auto flex-1' },
+                            { className: 'flex items-center gap-3 w-full' },
                             React.createElement('span', { className: 'text-xs font-bold text-amber-400 whitespace-nowrap flex items-center gap-1.5' }, React.createElement(Icons.Volume), `Volume: ${telaoVolume}%`),
                             React.createElement('input', {
                                 type: 'range', min: '0', max: '100', value: telaoVolume,
                                 onChange: (e) => handleVolumeChangeAdmin(e.target.value),
-                                className: 'w-full sm:w-48 accent-amber-500 cursor-pointer'
+                                className: 'w-full accent-amber-500 cursor-pointer'
                             })
                         ),
                         React.createElement(
                             'div',
-                            { className: 'flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap' },
-                            React.createElement('button', { onClick: handleTogglePause, className: `${isPaused ? 'bg-emerald-500 text-zinc-950' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'} font-bold px-3.5 py-2.5 rounded-xl text-xs shadow flex items-center gap-1.5 transition` }, isPaused ? React.createElement(Icons.Play) : React.createElement(Icons.Pause), isPaused ? 'Retomar Pedidos' : 'Pausar Pedidos'),
-                            React.createElement('button', { onClick: handleClearTelaoCacheRemotely, className: 'bg-red-600 hover:bg-red-700 text-zinc-100 font-bold px-3.5 py-2.5 rounded-xl text-xs shadow flex items-center gap-1.5 transition' }, React.createElement(Icons.Refresh), 'Limpar Telão')
+                            { className: 'grid grid-cols-2 gap-2 pt-1' },
+                            React.createElement('button', { onClick: handleClearTelaoCacheRemotely, className: 'bg-red-600 hover:bg-red-700 text-zinc-100 font-bold px-3.5 py-2.5 rounded-xl text-xs shadow flex items-center justify-center gap-1.5 transition' }, React.createElement(Icons.Refresh), 'Limpar Telão'),
+                            React.createElement('button', { onClick: handleResetNotes, className: 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 transition' }, React.createElement(Icons.Trash), 'Zerar Histórico')
                         )
                     ),
-                    React.createElement(
-                        'div',
-                        { className: 'flex justify-end pt-1' },
-                        React.createElement('button', { onClick: handleResetNotes, className: 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 transition' }, React.createElement(Icons.Trash), 'Zerar Reações e Histórico')
-                    ),
+
+                    /* 🎵 MÚSICA DE FUNDO */
                     React.createElement(
                         'div',
                         { className: 'bg-zinc-900 border border-zinc-800 p-3.5 rounded-xl' },
