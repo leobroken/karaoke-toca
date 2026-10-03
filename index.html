@@ -411,54 +411,44 @@
                 }
 
                 const handleFullscreenChange = () => {
-                    const isFull = !!document.fullscreenElement;
-                    setIsFullscreenActive(isFull);
-                    if (isFull) {
-                        localStorage.setItem('toca_auto_fullscreen', 'true');
-                    } else {
-                        localStorage.removeItem('toca_auto_fullscreen');
-                    }
+                    setIsFullscreenActive(!!document.fullscreenElement);
                 };
                 document.addEventListener('fullscreenchange', handleFullscreenChange);
                 return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
             }, []);
 
-            // Auto-reativar tela cheia no Telão se já estava ativa antes do reload
+            // Apenas o Telão monitora o comando de recarregar/limpar cache do player
             useEffect(() => {
-                if (isTelaoMode) {
-                    const shouldAutoFull = localStorage.getItem('toca_auto_fullscreen') === 'true';
-                    if (shouldAutoFull && !document.fullscreenElement) {
-                        const timer = setTimeout(() => {
-                            document.documentElement.requestFullscreen().catch(() => {});
-                        }, 800);
-                        return () => clearTimeout(timer);
-                    }
-                }
-            }, [isTelaoMode]);
-
-            useEffect(() => {
+                if (!isTelaoMode) return;
                 const unsubReload = db.collection('settings').doc('reloadCommand').onSnapshot(doc => {
                     if (doc.exists) {
                         const data = doc.data();
                         if (data && data.timestamp) {
                             const elapsed = Date.now() - data.timestamp;
                             if (elapsed < 6000) {
-                                try {
-                                    // Mantém a preferência de tela cheia, limpa o restante
-                                    const keepFull = localStorage.getItem('toca_auto_fullscreen');
-                                    localStorage.clear();
-                                    sessionStorage.clear();
-                                    if (keepFull) localStorage.setItem('toca_auto_fullscreen', keepFull);
-                                } catch(e) {}
-                                const currentSearch = window.location.search;
-                                const hasTelao = currentSearch.includes('telao=true');
-                                window.location.href = window.location.pathname + (hasTelao ? '?telao=true&reload=' : '?reload=') + Date.now();
+                                window.location.reload();
                             }
                         }
                     }
                 });
                 return () => unsubReload();
-            }, []);
+            }, [isTelaoMode]);
+
+            // Ouve o comando de tela cheia disparado remotamente pelo painel do admin
+            useEffect(() => {
+                if (!isTelaoMode) return;
+                const unsubFull = db.collection('settings').doc('fullscreenCommand').onSnapshot(doc => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        if (data && data.timestamp && (Date.now() - data.timestamp < 5000)) {
+                            if (!document.fullscreenElement) {
+                                document.documentElement.requestFullscreen().catch(() => {});
+                            }
+                        }
+                    }
+                });
+                return () => unsubFull();
+            }, [isTelaoMode]);
 
             const [user, setUser] = useState(() => {
                 const saved = localStorage.getItem('toca_karaoke_user');
@@ -891,18 +881,27 @@
             };
 
             const handleClearTelaoCacheRemotely = async () => {
-                if (confirm('Deseja enviar comando para limpar o cache e reiniciar o Telão na TV Box?')) {
+                if (confirm('Deseja enviar comando para reiniciar e limpar o cache apenas do Telão na TV Box?')) {
                     try {
                         if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function' && backgroundSongActive) {
                             const currentTime = ytPlayerRef.current.getCurrentTime();
                             await db.collection('settings').doc('backgroundSong').update({ 'song.savedTime': currentTime });
                         }
                         await db.collection('settings').doc('reloadCommand').set({ timestamp: Date.now() });
-                        alert('Comando enviado com sucesso para a TV Box! 🚀');
+                        alert('Comando enviado com sucesso para o Telão! 🚀');
                     } catch (error) {
                         console.error("Erro ao enviar comando:", error);
                         alert('Erro ao enviar comando.');
                     }
+                }
+            };
+
+            const handleTriggerRemoteFullscreen = async () => {
+                try {
+                    await db.collection('settings').doc('fullscreenCommand').set({ timestamp: Date.now() });
+                    alert('Comando de tela cheia enviado para o Telão! ⛶');
+                } catch (error) {
+                    console.error("Erro ao enviar comando de tela cheia:", error);
                 }
             };
 
@@ -1599,7 +1598,8 @@
                         ),
                         React.createElement(
                             'div',
-                            { className: 'flex items-center gap-2 w-full sm:w-auto justify-end' },
+                            { className: 'flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap' },
+                            React.createElement('button', { onClick: handleTriggerRemoteFullscreen, className: 'bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-3.5 py-2.5 rounded-xl text-xs shadow flex items-center gap-1.5 transition' }, React.createElement(Icons.Fullscreen), 'Tela Cheia Telão'),
                             React.createElement('button', { onClick: handleClearTelaoCacheRemotely, className: 'bg-red-600 hover:bg-red-700 text-zinc-100 font-bold px-3.5 py-2.5 rounded-xl text-xs shadow flex items-center gap-1.5 transition' }, React.createElement(Icons.Refresh), 'Limpar Telão')
                         )
                     ),
@@ -1760,7 +1760,7 @@
                                 'div',
                                 { className: 'space-y-3' },
                                 rankedHistory.map((item, index) => {
-                                    const r = item.reactions || { '🙉': 0, '❤️️': 0, '👏': 0 };
+                                    const r = item.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
                                     return React.createElement(
                                         'div',
                                         { key: item.id, className: 'bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex items-center justify-between gap-4' },
