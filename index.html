@@ -411,11 +411,30 @@
                 }
 
                 const handleFullscreenChange = () => {
-                    setIsFullscreenActive(!!document.fullscreenElement);
+                    const isFull = !!document.fullscreenElement;
+                    setIsFullscreenActive(isFull);
+                    if (isFull) {
+                        localStorage.setItem('toca_auto_fullscreen', 'true');
+                    } else {
+                        localStorage.removeItem('toca_auto_fullscreen');
+                    }
                 };
                 document.addEventListener('fullscreenchange', handleFullscreenChange);
                 return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
             }, []);
+
+            // Auto-reativar tela cheia no Telão se já estava ativa antes do reload
+            useEffect(() => {
+                if (isTelaoMode) {
+                    const shouldAutoFull = localStorage.getItem('toca_auto_fullscreen') === 'true';
+                    if (shouldAutoFull && !document.fullscreenElement) {
+                        const timer = setTimeout(() => {
+                            document.documentElement.requestFullscreen().catch(() => {});
+                        }, 800);
+                        return () => clearTimeout(timer);
+                    }
+                }
+            }, [isTelaoMode]);
 
             useEffect(() => {
                 const unsubReload = db.collection('settings').doc('reloadCommand').onSnapshot(doc => {
@@ -425,8 +444,11 @@
                             const elapsed = Date.now() - data.timestamp;
                             if (elapsed < 6000) {
                                 try {
+                                    // Mantém a preferência de tela cheia, limpa o restante
+                                    const keepFull = localStorage.getItem('toca_auto_fullscreen');
                                     localStorage.clear();
                                     sessionStorage.clear();
+                                    if (keepFull) localStorage.setItem('toca_auto_fullscreen', keepFull);
                                 } catch(e) {}
                                 const currentSearch = window.location.search;
                                 const hasTelao = currentSearch.includes('telao=true');
@@ -559,7 +581,7 @@
                                 artist: currentActive.artist,
                                 user: currentActive.user,
                                 phone: currentActive.phone || '',
-                                reactions: { '🙉': 0, '❤️': 0, '👏': 0 },
+                                reactions: { '🙉': 0, '❤️️': 0, '👏': 0 },
                                 reactedUsers: {},
                                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
                             });
@@ -1738,7 +1760,7 @@
                                 'div',
                                 { className: 'space-y-3' },
                                 rankedHistory.map((item, index) => {
-                                    const r = item.reactions || { '🙉': 0, '❤️': 0, '👏': 0 };
+                                    const r = item.reactions || { '🙉': 0, '❤️️': 0, '👏': 0 };
                                     return React.createElement(
                                         'div',
                                         { key: item.id, className: 'bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex items-center justify-between gap-4' },
@@ -1753,7 +1775,7 @@
                                             'div',
                                             { className: 'bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-3' },
                                             React.createElement('span', null, `🙉 ${r['🙉'] || 0}`),
-                                            React.createElement('span', null, `❤️ ${r['❤️'] || 0}`),
+                                            React.createElement('span', null, `❤️️ ${r['❤️'] || 0}`),
                                             React.createElement('span', null, `👏 ${r['👏'] || 0}`)
                                         )
                                     );
