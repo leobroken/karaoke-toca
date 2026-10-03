@@ -430,6 +430,13 @@
                         if (data && data.timestamp) {
                             const elapsed = Date.now() - data.timestamp;
                             if (elapsed < 6000) {
+                                // 🚀 Força gravação síncrona/imediata do tempo atual antes de recarregar
+                                if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
+                                    const currentTime = ytPlayerRef.current.getCurrentTime();
+                                    if (currentTime > 0) {
+                                        db.collection('settings').doc('backgroundSong').update({ 'song.savedTime': currentTime }).catch(() => {});
+                                    }
+                                }
                                 window.location.reload();
                             }
                         }
@@ -739,6 +746,7 @@
                 }
             }, [queue, backgroundSongActive, activePlayingSong]);
 
+            // Loop para atualizar o tempo salvo da música de fundo a cada segundo
             useEffect(() => {
                 if (!isTelaoMode) return;
                 if (checkEndIntervalRef.current) clearInterval(checkEndIntervalRef.current);
@@ -768,6 +776,26 @@
                     if (checkEndIntervalRef.current) clearInterval(checkEndIntervalRef.current);
                 };
             }, [isTelaoMode, activePlayingSong]);
+
+            // Captura o momento exato em que a página vai ser fechada ou recarregada para salvar o tempo
+            useEffect(() => {
+                if (!isTelaoMode) return;
+                const handleBeforeUnload = () => {
+                    if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
+                        const currentTime = ytPlayerRef.current.getCurrentTime();
+                        const currentActive = activePlayingSongRef.current;
+                        if (currentActive && currentActive.isBackground && currentTime > 0) {
+                            // Salva de forma síncrona/direta via fetch beacon se possível, ou atualiza a referência local
+                            try {
+                                const dbRef = db.collection('settings').doc('backgroundSong');
+                                dbRef.update({ 'song.savedTime': currentTime });
+                            } catch(e) {}
+                        }
+                    }
+                };
+                window.addEventListener('beforeunload', handleBeforeUnload);
+                return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+            }, [isTelaoMode]);
 
             useEffect(() => {
                 if (!isTelaoMode) return;
@@ -1567,7 +1595,7 @@
                             'div',
                             { className: 'grid grid-cols-2 gap-2 pt-1' },
                             React.createElement('button', { onClick: handleClearTelaoCacheRemotely, className: 'bg-red-600 hover:bg-red-700 text-zinc-100 font-bold px-3.5 py-2.5 rounded-xl text-xs shadow flex items-center justify-center gap-1.5 transition' }, React.createElement(Icons.Refresh), 'Limpar Telão'),
-                            React.createElement('button', { onClick: handleResetNotes, className: 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 transition' }, React.createElement(Icons.Trash), 'Zerar Histórico')
+                            React.createElement('button', { onClick: handleResetNotes, className: 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold px-3.5 py-2.5 rounded-xl text-xs shadow flex items-center justify-center gap-1.5 transition' }, React.createElement(Icons.Trash), 'Zerar Histórico')
                         )
                     ),
 
