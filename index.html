@@ -120,6 +120,12 @@
             ),
             Close: () => React.createElement('svg', { className: 'w-4 h-4', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24', xmlns: 'http://www.w3.org/2000/svg' },
                 React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: '2', d: 'M6 18L18 6M6 6l12 12' })
+            ),
+            Maximize: () => React.createElement('svg', { className: 'w-4 h-4', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24', xmlns: 'http://www.w3.org/2000/svg' },
+                React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: '2', d: 'M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4' })
+            ),
+            Minimize: () => React.createElement('svg', { className: 'w-4 h-4', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24', xmlns: 'http://www.w3.org/2000/svg' },
+                React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: '2', d: 'M9 9V4m0 0H4m5 0L3 9m12-5v5m0 0h5m-5 0l5-5M9 15v5m0 0H4m5 0l-5-5m12 5v-5m0 0h5m-5 0l5 5' })
             )
         };
 
@@ -395,12 +401,35 @@
             }, []);
 
             const [isTelaoMode, setIsTelaoMode] = useState(false);
+            const [isFullscreen, setIsFullscreen] = useState(false);
 
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
                 if (params.get('telao') === 'true') {
                     setIsTelaoMode(true);
                 }
+            }, []);
+
+            const handleToggleFullscreen = () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().then(() => {
+                        setIsFullscreen(true);
+                    }).catch(() => {});
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen().then(() => {
+                            setIsFullscreen(false);
+                        }).catch(() => {});
+                    }
+                }
+            };
+
+            useEffect(() => {
+                const handleFullscreenChange = () => {
+                    setIsFullscreen(!!document.fullscreenElement);
+                };
+                document.addEventListener('fullscreenchange', handleFullscreenChange);
+                return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
             }, []);
 
             useEffect(() => {
@@ -430,7 +459,6 @@
                         if (data && data.timestamp) {
                             const elapsed = Date.now() - data.timestamp;
                             if (elapsed < 6000) {
-                                // 🚀 Força gravação síncrona/imediata do tempo atual antes de recarregar
                                 if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
                                     const currentTime = ytPlayerRef.current.getCurrentTime();
                                     if (currentTime > 0) {
@@ -746,7 +774,6 @@
                 }
             }, [queue, backgroundSongActive, activePlayingSong]);
 
-            // Loop para atualizar o tempo salvo da música de fundo a cada segundo
             useEffect(() => {
                 if (!isTelaoMode) return;
                 if (checkEndIntervalRef.current) clearInterval(checkEndIntervalRef.current);
@@ -777,7 +804,6 @@
                 };
             }, [isTelaoMode, activePlayingSong]);
 
-            // Captura o momento exato em que a página vai ser fechada ou recarregada para salvar o tempo
             useEffect(() => {
                 if (!isTelaoMode) return;
                 const handleBeforeUnload = () => {
@@ -785,7 +811,6 @@
                         const currentTime = ytPlayerRef.current.getCurrentTime();
                         const currentActive = activePlayingSongRef.current;
                         if (currentActive && currentActive.isBackground && currentTime > 0) {
-                            // Salva de forma síncrona/direta via fetch beacon se possível, ou atualiza a referência local
                             try {
                                 const dbRef = db.collection('settings').doc('backgroundSong');
                                 dbRef.update({ 'song.savedTime': currentTime });
@@ -1363,9 +1388,22 @@
                     ) : null,
                     React.createElement(
                         'div',
-                        { className: 'absolute top-4 left-6 flex items-center gap-3 z-10' },
+                        { className: 'absolute top-4 left-6 flex items-center gap-3 z-10 flex-wrap' },
                         React.createElement('span', { className: 'bg-amber-500 text-zinc-950 font-black px-4 py-1.5 rounded-xl text-sm uppercase flex items-center gap-2' }, React.createElement(Icons.Monitor), ' Telão Toca do Guerreiro'),
                         currentPlaying && !isTelaoMutedState && React.createElement('span', { className: 'bg-zinc-900 border border-zinc-800 text-zinc-300 px-4 py-1.5 rounded-xl text-sm font-bold flex items-center gap-2' }, currentPlaying.isBackground ? React.createElement(Icons.Volume) : React.createElement(Icons.Mic), currentPlaying.isBackground ? 'Som Ambiente' : `Cantando: ${currentPlaying.user} — ${currentPlaying.title}`)
+                    ),
+                    React.createElement(
+                        'div',
+                        { className: 'absolute top-4 right-4 z-10 flex items-center' },
+                        React.createElement(
+                            'button',
+                            {
+                                onClick: handleToggleFullscreen,
+                                title: isFullscreen ? 'Sair da Tela Cheia' : 'Tela Cheia',
+                                className: 'bg-zinc-900/80 hover:bg-zinc-900 border border-amber-500/50 text-amber-400 p-2.5 rounded-xl shadow-lg transition active:scale-95 flex items-center justify-center'
+                            },
+                            isFullscreen ? React.createElement(Icons.Minimize, { className: 'w-5 h-5' }) : React.createElement(Icons.Maximize, { className: 'w-5 h-5' })
+                        )
                     ),
                     
                     React.createElement(
@@ -1565,7 +1603,6 @@
                     { className: 'bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 mb-8 space-y-4' },
                     React.createElement('h3', { className: 'text-amber-400 font-bold text-base flex items-center gap-2' }, '👑 Painel de Administração'),
                     
-                    /* 🛠️ BOTÕES PRINCIPAIS ORGANIZADOS EM GRADE DE 2 COLUNAS */
                     React.createElement(
                         'div',
                         { className: 'grid grid-cols-2 gap-3' },
@@ -1577,7 +1614,6 @@
                         React.createElement('button', { onClick: handleTogglePause, className: `${isPaused ? 'bg-emerald-500 text-zinc-950' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'} font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm` }, isPaused ? React.createElement(Icons.Play) : React.createElement(Icons.Pause), isPaused ? 'Retomar Pedidos' : 'Pausar Pedidos')
                     ),
 
-                    /* 🎚️ BLOCO DE VOLUME E LIMPEZA */
                     React.createElement(
                         'div',
                         { className: 'bg-zinc-900 border border-zinc-800 p-4 rounded-xl space-y-3' },
@@ -1599,7 +1635,6 @@
                         )
                     ),
 
-                    /* 🎵 MÚSICA DE FUNDO */
                     React.createElement(
                         'div',
                         { className: 'bg-zinc-900 border border-zinc-800 p-3.5 rounded-xl' },
