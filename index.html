@@ -539,9 +539,10 @@
             const [isVideoMuted, setIsVideoMuted] = useState(true);
             const videoRef = useRef(null);
 
-            // Estado para o aviso do Tobas a cada 15 min com o link exato
+            // Estado para o aviso do chamado.mp4 a cada 15 min
             const [showTobasNotice, setShowTobasNotice] = useState(false);
             const lastTobasTimeRef = useRef(Date.now());
+            const tobasVideoRef = useRef(null);
 
             const [isAdmin, setIsAdmin] = useState(() => {
                 const adminSaved = localStorage.getItem('toca_karaoke_admin');
@@ -748,7 +749,7 @@
                 };
             }, [isTelaoMode]);
 
-            // Verificação dos 15 minutos para o aviso do Tobas (Link exato: https://youtu.be/2we4Ta0JPeU) ajustado para 13 segundos de exibição completa
+            // Verificação dos 15 minutos para tocar o chamado.mp4 com som ambiente baixo (15%)
             useEffect(() => {
                 if (!isTelaoMode) return;
                 const interval = setInterval(() => {
@@ -765,21 +766,21 @@
                         setShowTobasNotice(true);
 
                         if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
-                            ytPlayerRef.current.setVolume(20);
+                            ytPlayerRef.current.setVolume(15); // Abaixa o som ambiente para 15%
                         }
-
-                        // Ajustado para 13000ms (13 segundos) para garantir que o vídeo rode inteiro sem cortar
-                        setTimeout(() => {
-                            setShowTobasNotice(false);
-                            if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
-                                ytPlayerRef.current.setVolume(telaoVolume);
-                            }
-                        }, 13000);
                     }
                 }, 10000);
 
                 return () => clearInterval(interval);
-            }, [isTelaoMode, telaoVolume]);
+            }, [isTelaoMode]);
+
+            // Restaura o volume do som ambiente quando o chamado.mp4 termina
+            const handleTobasVideoEnded = () => {
+                setShowTobasNotice(false);
+                if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
+                    ytPlayerRef.current.setVolume(telaoVolume);
+                }
+            };
 
             useEffect(() => {
                 if (!isTelaoMode || !activePlayingSong || activePlayingSong.isBackground) return;
@@ -1455,13 +1456,17 @@
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-0 overflow-hidden select-none relative w-screen h-screen' },
                     activeGuerreiros.map(g => React.createElement(FloatingGuerreiro, { key: g.id, emoji: g.emoji, onFinish: () => setActiveGuerreiros(prev => prev.filter(item => item.id !== g.id)) })),
                     
-                    // Vídeo sobreposto do Tobas a cada 15 minutos (Link exato: https://youtu.be/2we4Ta0JPeU)
+                    // Vídeo local chamado.mp4 sobreposto a cada 15 min com som ambiente baixo
                     showTobasNotice && React.createElement(
                         'div',
                         { className: 'absolute inset-0 z-50 bg-black flex items-center justify-center' },
-                        React.createElement('iframe', {
-                            src: 'https://www.youtube.com/embed/2we4Ta0JPeU?autoplay=1&controls=0&modestbranding=1&rel=0',
-                            className: 'w-full h-full border-0 pointer-events-none'
+                        React.createElement('video', {
+                            ref: tobasVideoRef,
+                            src: 'chamado.mp4',
+                            autoPlay: true,
+                            playsInline: true,
+                            onEnded: handleTobasVideoEnded,
+                            className: 'w-full h-full object-cover'
                         })
                     ),
 
@@ -1994,7 +1999,7 @@
                             React.createElement(
                                 'div',
                                 { className: 'flex gap-3' },
-                                React.createElement('button', { type: 'button', onClick: () => setAdminModal(false), className: 'w-1/2 bg-zinc-800 text-zinc-300 font-medium py-3 rounded-xl text-sm' }, 'Cancelar'),
+                                React.createElement('button', { type: 'button', onClick: () => adminModal(false), className: 'w-1/2 bg-zinc-800 text-zinc-300 font-medium py-3 rounded-xl text-sm' }, 'Cancelar'),
                                 React.createElement('button', { type: 'submit', className: 'w-1/2 bg-amber-500 text-zinc-950 font-bold py-3 rounded-xl text-sm shadow-lg' }, 'Entrar')
                             )
                         )
