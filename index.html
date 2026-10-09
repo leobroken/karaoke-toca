@@ -539,6 +539,10 @@
             const [isVideoMuted, setIsVideoMuted] = useState(true);
             const videoRef = useRef(null);
 
+            // Estado para o aviso do Tobas a cada 15 min com o link exato
+            const [showTobasNotice, setShowTobasNotice] = useState(false);
+            const lastTobasTimeRef = useRef(Date.now());
+
             const [isAdmin, setIsAdmin] = useState(() => {
                 const adminSaved = localStorage.getItem('toca_karaoke_admin');
                 if (adminSaved) {
@@ -728,6 +732,41 @@
                     unsubMuted();
                 };
             }, [isTelaoMode]);
+
+            // Verificação dos 15 minutos para o aviso do Tobas (Link exato: https://youtu.be/2we4Ta0JPeU)
+            useEffect(() => {
+                if (!isTelaoMode) return;
+                const interval = setInterval(() => {
+                    const currentQueue = queueRef.current;
+                    const currentActive = activePlayingSongRef.current;
+                    const now = Date.now();
+                    const fifteenMinutes = 15 * 60 * 1000;
+
+                    const isQueueEmpty = currentQueue.length === 0;
+                    const isPlayingBackground = !currentActive || currentActive.isBackground;
+
+                    if (isQueueEmpty && isPlayingBackground && (now - lastTobasTimeRef.current >= fifteenMinutes)) {
+                        lastTobasTimeRef.current = now;
+                        setShowTobasNotice(true);
+
+                        // Abaixar o volume do YouTube player de fundo para 20%
+                        if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
+                            ytPlayerRef.current.setVolume(20);
+                        }
+
+                        // O vídeo do Tobas tem 11 segundos
+                        setTimeout(() => {
+                            setShowTobasNotice(false);
+                            // Restaurar volume normal do som ambiente
+                            if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
+                                ytPlayerRef.current.setVolume(telaoVolume);
+                            }
+                        }, 12000);
+                    }
+                }, 10000);
+
+                return () => clearInterval(interval);
+            }, [isTelaoMode, telaoVolume]);
 
             useEffect(() => {
                 if (!isTelaoMode || !activePlayingSong || activePlayingSong.isBackground) return;
@@ -1367,9 +1406,20 @@
                     'div',
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-0 overflow-hidden select-none relative w-screen h-screen' },
                     activeGuerreiros.map(g => React.createElement(FloatingGuerreiro, { key: g.id, emoji: g.emoji, onFinish: () => setActiveGuerreiros(prev => prev.filter(item => item.id !== g.id)) })),
+                    
+                    // Vídeo sobreposto do Tobas a cada 15 minutos (Link exato: https://youtu.be/2we4Ta0JPeU)
+                    showTobasNotice && React.createElement(
+                        'div',
+                        { className: 'absolute inset-0 z-50 bg-black flex items-center justify-center' },
+                        React.createElement('iframe', {
+                            src: 'https://www.youtube.com/embed/2we4Ta0JPeU?autoplay=1&controls=0&modestbranding=1&rel=0',
+                            className: 'w-full h-full border-0 pointer-events-none'
+                        })
+                    ),
+
                     React.createElement(
                         'div',
-                        { className: 'absolute inset-0 pointer-events-none overflow-hidden z-50 flex items-center justify-center' },
+                        { className: 'absolute inset-0 pointer-events-none overflow-hidden z-40 flex items-center justify-center' },
                         starMessages.map((id) => React.createElement(
                             'div',
                             { key: id, className: 'absolute flex flex-col items-center floating-star-message bg-gradient-to-r from-amber-500/95 via-yellow-400/95 to-amber-600/95 border-2 border-yellow-200 text-zinc-950 font-black px-8 py-4 rounded-3xl shadow-2xl text-2xl sm:text-4xl text-center' },
