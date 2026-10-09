@@ -126,6 +126,9 @@
             ),
             Minimize: () => React.createElement('svg', { className: 'w-4 h-4', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24', xmlns: 'http://www.w3.org/2000/svg' },
                 React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: '2', d: 'M9 9V4m0 0H4m5 0L3 9m12-5v5m0 0h5m-5 0l5-5M9 15v5m0 0H4m5 0l-5-5m12 5v-5m0 0h5m-5 0l5 5' })
+            ),
+            Megaphone: () => React.createElement('svg', { className: 'w-4 h-4', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24', xmlns: 'http://www.w3.org/2000/svg' },
+                React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: '2', d: 'M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.987 3.987 0 01-1.564-.317z' })
             )
         };
 
@@ -539,9 +542,8 @@
             const [isVideoMuted, setIsVideoMuted] = useState(true);
             const videoRef = useRef(null);
 
-            // Estado para o aviso do chamado.mp4 a cada 15 min
+            // Estado para controlar o vídeo chamado.mp4 via Firebase (botão do admin)
             const [showTobasNotice, setShowTobasNotice] = useState(false);
-            const lastTobasTimeRef = useRef(Date.now());
             const tobasVideoRef = useRef(null);
 
             const [isAdmin, setIsAdmin] = useState(() => {
@@ -726,6 +728,27 @@
                     }
                 });
 
+                // Ouve o comando do botão do admin para exibir o chamado.mp4 no telão em tempo real
+                const unsubTobas = db.collection('settings').doc('tobasPropaganda').onSnapshot(doc => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        const isActive = data.active || false;
+                        setShowTobasNotice(isActive);
+
+                        if (isTelaoMode) {
+                            if (isActive) {
+                                if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
+                                    ytPlayerRef.current.setVolume(15); // Abaixa o som ambiente para 15%
+                                }
+                            } else {
+                                if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
+                                    ytPlayerRef.current.setVolume(telaoVolume); // Restaura o volume normal
+                                }
+                            }
+                        }
+                    }
+                });
+
                 const unsubUsers = db.collection('users').onSnapshot(snapshot => {
                     const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setUsersList(items);
@@ -744,41 +767,28 @@
                     unsubBg();
                     unsubTelaoMute();
                     unsubVolume();
+                    unsubTobas();
                     unsubUsers();
                     unsubMuted();
                 };
-            }, [isTelaoMode]);
+            }, [isTelaoMode, telaoVolume]);
 
-            // Verificação dos 15 minutos para tocar o chamado.mp4 com som ambiente baixo (15%)
-            useEffect(() => {
-                if (!isTelaoMode) return;
-                const interval = setInterval(() => {
-                    const currentQueue = queueRef.current;
-                    const currentActive = activePlayingSongRef.current;
-                    const now = Date.now();
-                    const fifteenMinutes = 15 * 60 * 1000;
+            // Botão do Admin para ligar/desligar o chamado.mp4
+            const handleToggleTobasPropaganda = async () => {
+                const newState = !showTobasNotice;
+                try {
+                    await db.collection('settings').doc('tobasPropaganda').set({ active: newState });
+                } catch (error) {
+                    console.error("Erro ao alternar propagando do chamado:", error);
+                }
+            };
 
-                    const isQueueEmpty = currentQueue.length === 0;
-                    const isPlayingBackground = !currentActive || currentActive.isBackground;
-
-                    if (isQueueEmpty && isPlayingBackground && (now - lastTobasTimeRef.current >= fifteenMinutes)) {
-                        lastTobasTimeRef.current = now;
-                        setShowTobasNotice(true);
-
-                        if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
-                            ytPlayerRef.current.setVolume(15); // Abaixa o som ambiente para 15%
-                        }
-                    }
-                }, 10000);
-
-                return () => clearInterval(interval);
-            }, [isTelaoMode]);
-
-            // Restaura o volume do som ambiente quando o chamado.mp4 termina
-            const handleTobasVideoEnded = () => {
-                setShowTobasNotice(false);
-                if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
-                    ytPlayerRef.current.setVolume(telaoVolume);
+            // Quando o chamado.mp4 terminar sozinho no telão
+            const handleTobasVideoEnded = async () => {
+                try {
+                    await db.collection('settings').doc('tobasPropaganda').set({ active: false });
+                } catch (error) {
+                    console.error("Erro ao fechar chamado:", error);
                 }
             };
 
@@ -1456,7 +1466,7 @@
                     { className: 'fixed inset-0 bg-black flex flex-col items-center justify-center p-0 overflow-hidden select-none relative w-screen h-screen' },
                     activeGuerreiros.map(g => React.createElement(FloatingGuerreiro, { key: g.id, emoji: g.emoji, onFinish: () => setActiveGuerreiros(prev => prev.filter(item => item.id !== g.id)) })),
                     
-                    // Vídeo local chamado.mp4 sobreposto a cada 15 min com som ambiente baixo
+                    // Vídeo local chamado.mp4 ativado pelo botão do Administrador
                     showTobasNotice && React.createElement(
                         'div',
                         { className: 'absolute inset-0 z-50 bg-black flex items-center justify-center' },
@@ -1717,7 +1727,18 @@
                         React.createElement('button', { onClick: handleToggleTelaoPlayPause, className: `${isTelaoMutedState ? 'bg-emerald-500 text-zinc-950' : 'bg-red-500/20 text-red-400 border border-red-500/40'} font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm` }, isTelaoMutedState ? React.createElement(Icons.Play) : React.createElement(Icons.Pause), isTelaoMutedState ? 'Tocar Telão' : 'Pausar Telão'),
                         React.createElement('button', { onClick: () => setShowUsersModal(true), className: 'bg-sky-500 hover:bg-sky-600 text-zinc-950 font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm' }, React.createElement(Icons.Users), `Usuários (${usersList.length})`),
                         React.createElement('button', { onClick: handleNextSong, className: 'bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm' }, React.createElement(Icons.Skip), 'Próxima'),
-                        React.createElement('button', { onClick: handleTogglePause, className: `${isPaused ? 'bg-emerald-500 text-zinc-950' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'} font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm` }, isPaused ? React.createElement(Icons.Play) : React.createElement(Icons.Pause), isPaused ? 'Retomar Pedidos' : 'Pausar Pedidos')
+                        React.createElement('button', { onClick: handleTogglePause, className: `${isPaused ? 'bg-emerald-500 text-zinc-950' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'} font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm` }, isPaused ? React.createElement(Icons.Play) : React.createElement(Icons.Pause), isPaused ? 'Retomar Pedidos' : 'Pausar Pedidos'),
+                        
+                        // Botão novo para ativar/desativar o chamado.mp4 manualmente
+                        React.createElement(
+                            'button',
+                            {
+                                onClick: handleToggleTobasPropaganda,
+                                className: `${showTobasNotice ? 'bg-red-500 text-zinc-950 animate-pulse' : 'bg-amber-500 hover:bg-amber-600 text-zinc-950'} col-span-2 font-bold px-4 py-3.5 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-lg`
+                            },
+                            React.createElement(Icons.Megaphone),
+                            showTobasNotice ? '⚠️ Parar Vídeo Chamado no Telão' : '📢 Ativar Vídeo Chamado no Telão'
+                        )
                     ),
 
                     React.createElement(
