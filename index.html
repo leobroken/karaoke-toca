@@ -836,10 +836,11 @@
                     return;
                 }
 
+                const startTime = (currentPlaying && currentPlaying.isBackground && currentPlaying.savedTime) ? currentPlaying.savedTime : 0;
+
                 if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
                     if (currentVideoIdRef.current !== videoId || (currentPlaying && currentPlaying.timestamp)) {
                         currentVideoIdRef.current = videoId;
-                        const startTime = (currentPlaying.isBackground && currentPlaying.savedTime) ? currentPlaying.savedTime : 0;
                         ytPlayerRef.current.loadVideoById({ videoId: videoId, startSeconds: startTime });
                         ytPlayerRef.current.unMute();
                         ytPlayerRef.current.setVolume(telaoVolume);
@@ -856,7 +857,6 @@
                         if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
                             try { ytPlayerRef.current.destroy(); } catch(e){}
                         }
-                        const startTime = (currentPlaying && currentPlaying.isBackground && currentPlaying.savedTime) ? currentPlaying.savedTime : 0;
 
                         ytPlayerRef.current = new YT.Player('youtube-player-container', {
                             height: '100%',
@@ -875,6 +875,9 @@
                                 'onReady': (event) => {
                                     event.target.unMute();
                                     event.target.setVolume(telaoVolume);
+                                    if (startTime > 0) {
+                                        event.target.seekTo(startTime, true);
+                                    }
                                     if (isTelaoMutedState) event.target.pauseVideo();
                                     else if (currentPlaying && currentPlaying.isBackground) event.target.playVideo();
                                     else event.target.pauseVideo();
