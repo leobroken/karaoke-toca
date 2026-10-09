@@ -843,22 +843,35 @@
                 };
             }, [isTelaoMode, activePlayingSong]);
 
+            // Salvar o tempo exato ao sair da página ou trocar de aba (visibilitychange e beforeunload)
             useEffect(() => {
                 if (!isTelaoMode) return;
-                const handleBeforeUnload = () => {
+
+                const saveCurrentTimeNow = () => {
                     if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
                         const currentTime = ytPlayerRef.current.getCurrentTime();
                         const currentActive = activePlayingSongRef.current;
                         if (currentActive && currentActive.isBackground && currentTime > 0) {
                             try {
-                                const dbRef = db.collection('settings').doc('backgroundSong');
-                                dbRef.update({ 'song.savedTime': currentTime });
+                                db.collection('settings').doc('backgroundSong').update({ 'song.savedTime': currentTime });
                             } catch(e) {}
                         }
                     }
                 };
-                window.addEventListener('beforeunload', handleBeforeUnload);
-                return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+
+                const handleVisibilityChange = () => {
+                    if (document.visibilityState === 'hidden') {
+                        saveCurrentTimeNow();
+                    }
+                };
+
+                window.addEventListener('beforeunload', saveCurrentTimeNow);
+                document.addEventListener('visibilitychange', handleVisibilityChange);
+
+                return () => {
+                    window.removeEventListener('beforeunload', saveCurrentTimeNow);
+                    document.removeEventListener('visibilitychange', handleVisibilityChange);
+                };
             }, [isTelaoMode]);
 
             useEffect(() => {
