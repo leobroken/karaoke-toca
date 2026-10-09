@@ -611,7 +611,6 @@
                     const freshQueue = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
                     if (freshQueue.length === 0) {
-                        // Ao esvaziar a fila, busca o som ambiente mais recente do Firestore para garantir o savedTime atualizado
                         const bgDoc = await db.collection('settings').doc('backgroundSong').get();
                         const bgData = bgDoc.exists ? bgDoc.data().song : null;
 
@@ -636,7 +635,6 @@
                             song: { ...nextPlayingFromQueue, videoId: videoId, timestamp: Date.now() } 
                         });
                     } else {
-                        // Se não houver próxima na fila, ativa o som ambiente recuperando o savedTime fresco
                         const bgDoc = await db.collection('settings').doc('backgroundSong').get();
                         const bgData = bgDoc.exists ? bgDoc.data().song : null;
 
@@ -750,7 +748,7 @@
                 };
             }, [isTelaoMode]);
 
-            // Verificação dos 15 minutos para o aviso do Tobas (Link exato: https://youtu.be/2we4Ta0JPeU)
+            // Verificação dos 15 minutos para o aviso do Tobas (Link exato: https://youtu.be/2we4Ta0JPeU) ajustado para 13 segundos de exibição completa
             useEffect(() => {
                 if (!isTelaoMode) return;
                 const interval = setInterval(() => {
@@ -766,19 +764,17 @@
                         lastTobasTimeRef.current = now;
                         setShowTobasNotice(true);
 
-                        // Abaixar o volume do YouTube player de fundo para 20%
                         if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
                             ytPlayerRef.current.setVolume(20);
                         }
 
-                        // O vídeo do Tobas tem 11 segundos
+                        // Ajustado para 13000ms (13 segundos) para garantir que o vídeo rode inteiro sem cortar
                         setTimeout(() => {
                             setShowTobasNotice(false);
-                            // Restaurar volume normal do som ambiente
                             if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
                                 ytPlayerRef.current.setVolume(telaoVolume);
                             }
-                        }, 12000);
+                        }, 13000);
                     }
                 }, 10000);
 
@@ -819,7 +815,6 @@
                 };
             }, [activePlayingSong, isTelaoMode]);
 
-            // Quando a fila esvazia, define o activePlaying com a música de fundo e seu tempo atualizado do banco
             useEffect(() => {
                 if (queue.length === 0 && backgroundSongActive && (!activePlayingSong || !activePlayingSong.isBackground)) {
                     db.collection('settings').doc('backgroundSong').get().then(doc => {
@@ -871,7 +866,6 @@
                 };
             }, [isTelaoMode, activePlayingSong]);
 
-            // Salvar o tempo exato ao sair da página ou trocar de aba (visibilitychange e beforeunload)
             useEffect(() => {
                 if (!isTelaoMode) return;
 
@@ -916,7 +910,6 @@
                     return;
                 }
 
-                // Se for som ambiente, busca o tempo salvo mais recente diretamente do banco antes de dar o seekTo
                 const setupPlayerInstance = async () => {
                     let startTime = (currentPlaying && currentPlaying.isBackground && currentPlaying.savedTime) ? currentPlaying.savedTime : 0;
                     
@@ -2001,7 +1994,7 @@
                             React.createElement(
                                 'div',
                                 { className: 'flex gap-3' },
-                                React.createElement('button', { type: 'button', onClick: () => adminModal(false), className: 'w-1/2 bg-zinc-800 text-zinc-300 font-medium py-3 rounded-xl text-sm' }, 'Cancelar'),
+                                React.createElement('button', { type: 'button', onClick: () => setAdminModal(false), className: 'w-1/2 bg-zinc-800 text-zinc-300 font-medium py-3 rounded-xl text-sm' }, 'Cancelar'),
                                 React.createElement('button', { type: 'submit', className: 'w-1/2 bg-amber-500 text-zinc-950 font-bold py-3 rounded-xl text-sm shadow-lg' }, 'Entrar')
                             )
                         )
