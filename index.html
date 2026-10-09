@@ -611,7 +611,16 @@
                     const freshQueue = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
                     if (freshQueue.length === 0) {
-                        await db.collection('settings').doc('activePlaying').set({ song: null });
+                        // Ao esvaziar a fila, busca o som ambiente mais recente do Firestore para garantir o savedTime atualizado
+                        const bgDoc = await db.collection('settings').doc('backgroundSong').get();
+                        const bgData = bgDoc.exists ? bgDoc.data().song : null;
+
+                        if (bgData) {
+                            await db.collection('settings').doc('activePlaying').set({ song: bgData });
+                        } else {
+                            await db.collection('settings').doc('activePlaying').set({ song: null });
+                        }
+
                         isTransitioningRef.current = false;
                         return;
                     }
@@ -627,7 +636,15 @@
                             song: { ...nextPlayingFromQueue, videoId: videoId, timestamp: Date.now() } 
                         });
                     } else {
-                        await db.collection('settings').doc('activePlaying').set({ song: null });
+                        // Se não houver próxima na fila, ativa o som ambiente recuperando o savedTime fresco
+                        const bgDoc = await db.collection('settings').doc('backgroundSong').get();
+                        const bgData = bgDoc.exists ? bgDoc.data().song : null;
+
+                        if (bgData) {
+                            await db.collection('settings').doc('activePlaying').set({ song: bgData });
+                        } else {
+                            await db.collection('settings').doc('activePlaying').set({ song: null });
+                        }
                     }
                 } catch (error) {
                     console.error("Erro ao avançar música na fila: ", error);
@@ -802,16 +819,27 @@
                 };
             }, [activePlayingSong, isTelaoMode]);
 
+            // Quando a fila esvazia, define o activePlaying com a música de fundo e seu tempo atualizado do banco
             useEffect(() => {
-                if (queue.length === 0 && backgroundSongActive && !activePlayingSong) {
-                    const videoId = backgroundSongActive.videoId || getYouTubeVideoId(backgroundSongActive.youtubeLink);
-                    if (videoId) {
-                        db.collection('settings').doc('activePlaying').set({ 
-                            song: { ...backgroundSongActive, videoId: videoId, isBackground: true, timestamp: Date.now() } 
-                        });
-                    }
+                if (queue.length === 0 && backgroundSongActive && (!activePlayingSong || !activePlayingSong.isBackground)) {
+                    db.collection('settings').doc('backgroundSong').get().then(doc => {
+                        const freshBg = doc.exists ? doc.data().song : backgroundSongActive;
+                        const videoId = freshBg.videoId || getYouTubeVideoId(freshBg.youtubeLink);
+                        if (videoId) {
+                            db.collection('settings').doc('activePlaying').set({ 
+                                song: { ...freshBg, videoId: videoId, isBackground: true, timestamp: Date.now() } 
+                            });
+                        }
+                    }).catch(() => {
+                        const videoId = backgroundSongActive.videoId || getYouTubeVideoId(backgroundSongActive.youtubeLink);
+                        if (videoId) {
+                            db.collection('settings').doc('activePlaying').set({ 
+                                song: { ...backgroundSongActive, videoId: videoId, isBackground: true, timestamp: Date.now() } 
+                            });
+                        }
+                    });
                 }
-            }, [queue, backgroundSongActive, activePlayingSong]);
+            }, [queue, backgroundSongActive]);
 
             useEffect(() => {
                 if (!isTelaoMode) return;
@@ -888,73 +916,87 @@
                     return;
                 }
 
-                const startTime = (currentPlaying && currentPlaying.isBackground && currentPlaying.savedTime) ? currentPlaying.savedTime : 0;
-
-                if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
-                    if (currentVideoIdRef.current !== videoId || (currentPlaying && currentPlaying.timestamp)) {
-                        currentVideoIdRef.current = videoId;
-                        ytPlayerRef.current.loadVideoById({ videoId: videoId, startSeconds: startTime });
-                        ytPlayerRef.current.unMute();
-                        ytPlayerRef.current.setVolume(telaoVolume);
-                        if (currentPlaying.isBackground) ytPlayerRef.current.playVideo();
-                        else ytPlayerRef.current.pauseVideo();
+                // Se for som ambiente, busca o tempo salvo mais recente diretamente do banco antes de dar o seekTo
+                const setupPlayerInstance = async () => {
+                    let startTime = (currentPlaying && currentPlaying.isBackground && currentPlaying.savedTime) ? currentPlaying.savedTime : 0;
+                    
+                    if (currentPlaying && currentPlaying.isBackground) {
+                        try {
+                            const bgDoc = await db.collection('settings').doc('backgroundSong').get();
+                            if (bgDoc.exists && bgDoc.data().song && bgDoc.data().song.savedTime) {
+                                startTime = bgDoc.data().song.savedTime;
+                            }
+                        } catch(e) {}
                     }
-                    return;
-                }
 
-                currentVideoIdRef.current = videoId;
-
-                const initPlayer = () => {
-                    if (window.YT && window.YT.Player) {
-                        if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
-                            try { ytPlayerRef.current.destroy(); } catch(e){}
+                    if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+                        if (currentVideoIdRef.current !== videoId || (currentPlaying && currentPlaying.timestamp)) {
+                            currentVideoIdRef.current = videoId;
+                            ytPlayerRef.current.loadVideoById({ videoId: videoId, startSeconds: startTime });
+                            ytPlayerRef.current.unMute();
+                            ytPlayerRef.current.setVolume(telaoVolume);
+                            if (currentPlaying.isBackground) ytPlayerRef.current.playVideo();
+                            else ytPlayerRef.current.pauseVideo();
                         }
+                        return;
+                    }
 
-                        ytPlayerRef.current = new YT.Player('youtube-player-container', {
-                            height: '100%',
-                            width: '100%',
-                            videoId: videoId,
-                            playerVars: {
-                                'autoplay': 1,
-                                'enablejsapi': 1,
-                                'controls': 1,
-                                'mute': 0,
-                                'modestbranding': 1,
-                                'start': Math.floor(startTime),
-                                'rel': 0
-                            },
-                            events: {
-                                'onReady': (event) => {
-                                    event.target.unMute();
-                                    event.target.setVolume(telaoVolume);
-                                    if (startTime > 0) {
-                                        event.target.seekTo(startTime, true);
-                                    }
-                                    if (isTelaoMutedState) event.target.pauseVideo();
-                                    else if (currentPlaying && currentPlaying.isBackground) event.target.playVideo();
-                                    else event.target.pauseVideo();
+                    currentVideoIdRef.current = videoId;
+
+                    const initPlayer = () => {
+                        if (window.YT && window.YT.Player) {
+                            if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+                                try { ytPlayerRef.current.destroy(); } catch(e){}
+                            }
+
+                            ytPlayerRef.current = new YT.Player('youtube-player-container', {
+                                height: '100%',
+                                width: '100%',
+                                videoId: videoId,
+                                playerVars: {
+                                    'autoplay': 1,
+                                    'enablejsapi': 1,
+                                    'controls': 1,
+                                    'mute': 0,
+                                    'modestbranding': 1,
+                                    'start': Math.floor(startTime),
+                                    'rel': 0
                                 },
-                                'onStateChange': (event) => {
-                                    if (event.data === YT.PlayerState.ENDED) {
-                                        const activeNow = activePlayingSongRef.current;
-                                        if (!activeNow || !activeNow.isBackground) handleNextSong();
-                                        else {
-                                            event.target.seekTo(0);
-                                            event.target.playVideo();
+                                events: {
+                                    'onReady': (event) => {
+                                        event.target.unMute();
+                                        event.target.setVolume(telaoVolume);
+                                        if (startTime > 0) {
+                                            event.target.seekTo(startTime, true);
+                                        }
+                                        if (isTelaoMutedState) event.target.pauseVideo();
+                                        else if (currentPlaying && currentPlaying.isBackground) event.target.playVideo();
+                                        else event.target.pauseVideo();
+                                    },
+                                    'onStateChange': (event) => {
+                                        if (event.data === YT.PlayerState.ENDED) {
+                                            const activeNow = activePlayingSongRef.current;
+                                            if (!activeNow || !activeNow.isBackground) handleNextSong();
+                                            else {
+                                                event.target.seekTo(0);
+                                                event.target.playVideo();
+                                            }
                                         }
                                     }
                                 }
-                            }
-                        });
+                            });
+                        }
+                    };
+
+                    if (!window.YT || !window.YT.Player) {
+                        window.onYouTubeIframeAPIReady = initPlayer;
+                        setTimeout(initPlayer, 1000);
+                    } else {
+                        initPlayer();
                     }
                 };
 
-                if (!window.YT || !window.YT.Player) {
-                    window.onYouTubeIframeAPIReady = initPlayer;
-                    setTimeout(initPlayer, 1000);
-                } else {
-                    initPlayer();
-                }
+                setupPlayerInstance();
             }, [isTelaoMode, activePlayingSong]);
 
             const handleToggleTelaoPlayPause = async () => {
@@ -1959,7 +2001,7 @@
                             React.createElement(
                                 'div',
                                 { className: 'flex gap-3' },
-                                React.createElement('button', { type: 'button', onClick: () => setAdminModal(false), className: 'w-1/2 bg-zinc-800 text-zinc-300 font-medium py-3 rounded-xl text-sm' }, 'Cancelar'),
+                                React.createElement('button', { type: 'button', onClick: () => adminModal(false), className: 'w-1/2 bg-zinc-800 text-zinc-300 font-medium py-3 rounded-xl text-sm' }, 'Cancelar'),
                                 React.createElement('button', { type: 'submit', className: 'w-1/2 bg-amber-500 text-zinc-950 font-bold py-3 rounded-xl text-sm shadow-lg' }, 'Entrar')
                             )
                         )
